@@ -1,0 +1,4 @@
+__pycache__/
+tests/*.json
+.DS_Store
+.impeccable/
