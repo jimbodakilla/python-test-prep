@@ -49,4 +49,8 @@ font_b64 = base64.b64encode(open(os.path.join(ROOT, 'src', 'assets', 'fredoka-la
 sprite = open(os.path.join(ROOT, 'src', 'sprite.svg'), encoding='utf-8').read()
 html = tpl.replace('/*CSS*/', rd('style.css').replace('__FONT_B64__', font_b64)).replace('/*SPRITE*/', sprite).replace('/*INTERP*/', esc(rd('interp.js'))).replace('/*DATA*/', esc(rd('data.js'))).replace('/*APP*/', esc(app_js))
 open(os.path.join(ROOT, 'index.html'), 'w', encoding='utf-8').write(html)
+import hashlib
+ver = hashlib.md5(html.encode('utf-8')).hexdigest()[:10]
+open(os.path.join(ROOT, 'sw.js'), 'w', encoding='utf-8').write(open(os.path.join(HERE, '..', 'src', 'sw.template.js'), encoding='utf-8').read().replace('__VERSION__', ver))
+print('wrote sw.js version', ver)
 print('wrote index.html', len(html) // 1024, 'KB')

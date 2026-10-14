@@ -47,7 +47,31 @@ const Store = {
     if (d.theme !== 'light' && d.theme !== 'dark') delete d.theme;
     this.data = d;
   },
-  save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) { /* private mode: keep in memory */ } },
+  /* Two tabs (or a stale tab) must never overwrite each other's progress: merge the disk copy in before every write. */
+  merge(d) {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return;
+    const m = this.data, num = x => Number.isFinite(x) ? x : 0;
+    m.xp = Math.max(num(m.xp), num(d.xp)); m.bestStreak = Math.max(num(m.bestStreak), num(d.bestStreak)); m.runs = Math.max(num(m.runs), num(d.runs));
+    if (d.items && typeof d.items === 'object') for (const [id, r] of Object.entries(d.items)) { const mine = m.items[id]; if (r && typeof r === 'object' && (!mine || (r.ts || 0) > (mine.ts || 0))) m.items[id] = r; }
+    for (const k of ['lessons', 'visited', 'plan', 'badgesSeen', 'best']) if (d[k] && typeof d[k] === 'object' && !Array.isArray(d[k])) for (const [a, b] of Object.entries(d[k])) { if (!(a in m[k])) m[k][a] = b; else if (k === 'best' && num(b) > num(m[k][a])) m[k][a] = b; }
+    if (Array.isArray(d.days)) m.days = [...new Set([...m.days, ...d.days.filter(x => typeof x === 'string')])].sort().slice(-120);
+    const union = (a, b) => { const seen = new Set(a.map(x => x.ts)); return a.concat(b.filter(x => x && !seen.has(x.ts))).sort((p, q) => p.ts - q.ts); };
+    if (Array.isArray(d.sessions)) m.sessions = union(m.sessions, d.sessions.filter(x => x && typeof x === 'object')).slice(-200);
+    if (Array.isArray(d.mocks)) m.mocks = union(m.mocks, d.mocks.filter(x => x && Number.isFinite(x.total) && x.total > 0)).slice(-100);
+  },
+  save() {
+    try {
+      try { this.merge(JSON.parse(localStorage.getItem(this.key))); } catch (e) { /* unreadable: just write ours */ }
+      localStorage.setItem(this.key, JSON.stringify(this.data)); this.failed = false;
+    } catch (e) { if (!this.failed) { this.failed = true; setTimeout(() => window.toast && toast('Heads up: this browser will not save your progress.'), 0); } }
+  },
+  /* an unfinished mock test lives under its own key so it can never clobber (or be clobbered by) the progress blob */
+  mockKey: 'pyprep.mock',
+  getMock() { try { return JSON.parse(localStorage.getItem(this.mockKey)); } catch (e) { return null; } },
+  setMock(o) { try { localStorage.setItem(this.mockKey, JSON.stringify(o)); } catch (e) { /* full or blocked: the test still works */ } },
+  clearMock() { try { localStorage.removeItem(this.mockKey); } catch (e) {} },
+  getDraft() { try { return localStorage.getItem('pyprep.draft') || ''; } catch (e) { return ''; } },
+  setDraft(t) { try { localStorage.setItem('pyprep.draft', t); } catch (e) {} },
   record(id, ok) {
     if (String(id)[0] === 'g') return;            // generated questions are not tracked
     const r = this.data.items[id] || { n: 0, right: 0, ever: false };
@@ -61,9 +85,10 @@ const Store = {
     const after = levelInfo(this.data.xp);
     if (after.n > before.n) setTimeout(() => celebrate({ title: 'Level ' + after.n + '!', text: 'You are now a ' + after.name + '.', mood: 'cheer', confetti: true }), 900);
   },
-  reset() { this.data = null; try { localStorage.removeItem(this.key); } catch (e) {} this.load(); },
+  reset() { this.data = null; try { localStorage.removeItem(this.key); localStorage.removeItem(this.mockKey); localStorage.removeItem('pyprep.draft'); } catch (e) {} this.load(); },
 };
 Store.load();
+window.addEventListener('storage', e => { if (e.key === Store.key && e.newValue) { try { Store.merge(JSON.parse(e.newValue)); if (window.paintChrome) window.paintChrome(); } catch (err) {} } });
 
 /* ---------- RNG ---------- */
 function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -281,6 +306,7 @@ function renderTranscript(tr, code) {
 
 /* ---------- misc UI helpers ---------- */
 function typeBadge(t) { return h('span', { class: 'badge b-' + t }, t); }
+const toTop = () => window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
 function toast(msg) {
   let t = $('#toast'); if (!t) { t = h('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.append(t); }
   t.textContent = msg; t.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 2200);
@@ -453,3 +479,5 @@ function announceBadges(list) {                 // one banner, however many were
   else celebrate({ title: list.length + ' new badges!', text: list.map(b => b.name).join(', '), mood: 'cheer', confetti: true, ms: 6500 });
 }
 function badgeToast() { announceBadges(newBadges()); }
+
+function buzz(p) { if (REDUCED || !navigator.vibrate) return; try { navigator.vibrate(p); } catch (e) {} }

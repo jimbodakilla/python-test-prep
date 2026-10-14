@@ -11,6 +11,21 @@ function Editor({ code = '', readonly = false, minLines = 3, label = 'Python cod
   const scroller = h('div', { class: 'ed-scroll' }, inner);
   const root = h('div', { class: 'editor' + (readonly ? ' ro' : '') }, h('div', { class: 'ed-title' }, icon('code'), 'main.py', h('span', { class: 'dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))), h('div', { class: 'ed-body' }, gut, scroller));
   const state = { err: 0, cur: 0 };
+  const hint = h('span', { class: 'sr-only', id: 'edh' + Math.random().toString(36).slice(2, 8) }, 'Code editor. Press Control plus Enter to run. Press Escape and then Tab to leave the editor.');
+  root.append(hint); ta.setAttribute('aria-describedby', hint.id);
+  let cw = 0;                                                                // width of one code character, for keeping the caret in view
+  function charW() { if (cw) return cw; const cs = getComputedStyle(ta); const c = document.createElement('canvas').getContext('2d'); c.font = `${cs.fontSize} ${cs.fontFamily}`; cw = c.measureText('0').width || 8.4; return cw; }
+  function revealCaret() {
+    if (document.activeElement !== ta) return;
+    const s = ta.selectionStart, v = ta.value, col = s - (v.lastIndexOf('\n', s - 1) + 1), line = v.slice(0, s).split('\n').length - 1;
+    const cs = getComputedStyle(ta), x = parseFloat(cs.paddingLeft) + col * charW(), w = scroller.clientWidth, pad = charW() * 3;
+    if (x + pad > scroller.scrollLeft + w) scroller.scrollLeft = x + pad - w; else if (x - pad < scroller.scrollLeft) scroller.scrollLeft = Math.max(0, x - pad);
+    const lh = parseFloat(cs.lineHeight) || 25, vv = window.visualViewport, vh = vv ? vv.height : innerHeight;
+    const y = ta.getBoundingClientRect().top + parseFloat(cs.paddingTop) + (line + 1) * lh;
+    const dock = bar && getComputedStyle(bar).position === 'fixed' ? bar.offsetHeight : 0, limit = vh - dock - 12;
+    if (y > limit) window.scrollBy({ top: y - limit, behavior: 'instant' });
+  }
+  ta.addEventListener('revealcaret', revealCaret);
   function sync() {
     const v = ta.value.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
     if (v !== ta.value) { const p = ta.selectionStart; ta.value = v; ta.setSelectionRange(p, p); }
@@ -20,10 +35,33 @@ function Editor({ code = '', readonly = false, minLines = 3, label = 'Python cod
     ta.style.height = pre.offsetHeight + 'px';
     inner.style.minHeight = (lines * 1.6) + 'em';
   }
-  ta.addEventListener('input', () => { state.err = 0; sync(); onInput && onInput(ta.value); });
+  ta.addEventListener('input', () => { state.err = 0; sync(); revealCaret(); onInput && onInput(ta.value); });
   let escTab = false;
   ta.addEventListener('blur', () => { escTab = false; });
-  const edit = (s, e, text, selStart, selEnd) => { ta.setRangeText(text, s, e, 'preserve'); ta.setSelectionRange(selStart, selEnd); ta.dispatchEvent(new Event('input')); };
+  /* edits go through the browser's own insertText so Undo (Ctrl+Z / shake) still works; setRangeText is the fallback */
+  const edit = (s, e, text, selStart, selEnd) => {
+    ta.setSelectionRange(s, e); let ok = false;
+    try { ok = text === '' ? (s === e || document.execCommand('delete')) : document.execCommand('insertText', false, text); } catch (err) { ok = false; }
+    if (!ok || ta.value.slice(s, s + text.length) !== text) { ta.setRangeText(text, s, e, 'preserve'); ta.dispatchEvent(new Event('input')); }
+    ta.setSelectionRange(selStart, selEnd); revealCaret();
+  };
+  function autoIndent() {                                                       // returns true if it handled the Enter
+    const v = ta.value, s = ta.selectionStart, en = ta.selectionEnd, ls = v.lastIndexOf('\n', s - 1) + 1, before = v.slice(ls, s);
+    const indent = (/^ */.exec(before) || [''])[0], code = before.replace(/#.*$/, '').trimEnd(), extra = code.endsWith(':') ? '    ' : '';
+    if (!indent && !extra) return false;
+    const ins = '\n' + indent + extra; edit(s, en, ins, s + ins.length, s + ins.length); return true;
+  }
+  function backIndent() {
+    const v = ta.value, s = ta.selectionStart, en = ta.selectionEnd; if (s !== en || s === 0) return false;
+    const ls = v.lastIndexOf('\n', s - 1) + 1, before = v.slice(ls, s);
+    if (/^ +$/.test(before) && before.length % 4 === 0) { edit(s - 4, s, '', s - 4, s - 4); return true; } return false;
+  }
+  /* phone keyboards often send Enter/Backspace as "beforeinput" with key "Unidentified": handle those too */
+  ta.addEventListener('beforeinput', e => {
+    if (readonly) return;
+    if ((e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') && autoIndent()) e.preventDefault();
+    else if (e.inputType === 'deleteContentBackward' && !e.isComposing && backIndent()) e.preventDefault();
+  });
   ta.addEventListener('keydown', e => {
     if (readonly) return;
     const v = ta.value, s = ta.selectionStart, en = ta.selectionEnd;
@@ -42,26 +80,20 @@ function Editor({ code = '', readonly = false, minLines = 3, label = 'Python cod
       }
       edit(s, en, '    ', s + 4, s + 4); return;
     }
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {                 // keep indentation; add 4 after a colon
-      const ls = v.lastIndexOf('\n', s - 1) + 1; const before = v.slice(ls, s);
-      const indent = (/^ */.exec(before) || [''])[0]; const code = before.replace(/#.*$/, '').trimEnd();
-      const extra = code.endsWith(':') ? '    ' : '';
-      if (indent || extra) { e.preventDefault(); const ins = '\n' + indent + extra; edit(s, en, ins, s + ins.length, s + ins.length); }
-      return;
-    }
-    if (e.key === 'Backspace' && s === en && s > 0) {                          // delete a whole indent step
-      const ls = v.lastIndexOf('\n', s - 1) + 1; const before = v.slice(ls, s);
-      if (/^ +$/.test(before) && before.length % 4 === 0) { e.preventDefault(); edit(s - 4, s, '', s - 4, s - 4); }
-    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { if (autoIndent()) e.preventDefault(); return; }
+    if (e.key === 'Backspace' && !e.isComposing && e.keyCode !== 229) { if (backIndent()) e.preventDefault(); }
   });
   let bar = null;
   if (symbols && !readonly) {
-    const keys = ['"', "'", '(', ')', ':', '[', ']', ',', '+', '-', '*', '/', '%', '=', '<', '>', '!', '.', '#', '⇥'];
-    bar = h('div', { class: 'symbar', role: 'toolbar', 'aria-label': 'Symbol keys' },
-      h('span', { class: 'symlabel' }, 'Symbols'),
-      keys.map(k => h('button', { type: 'button', class: 'symkey', 'aria-label': k === '⇥' ? 'insert indent' : 'insert ' + k, onmousedown: e => e.preventDefault(), onclick: () => {
-        ta.focus(); const s = ta.selectionStart, e2 = ta.selectionEnd;
-        ta.setRangeText(k === '⇥' ? '    ' : k, s, e2, 'end'); ta.dispatchEvent(new Event('input')); } }, k)));
+    const keys = ['⇥', '"', "'", '(', ')', ':', ',', '=', '+', '-', '*', '/', '%', '<', '>', '[', ']', '!', '.', '#'];
+    bar = h('div', { class: 'symbar', role: 'toolbar', 'aria-label': 'Symbol keys. Swipe sideways for more.' },
+      keys.map((k, i) => h('button', { type: 'button', class: 'symkey', tabindex: i ? '-1' : '0', 'aria-label': k === '⇥' ? 'insert indent' : 'insert ' + k, onpointerdown: e => e.preventDefault(), onmousedown: e => e.preventDefault(), onclick: () => {
+        ta.focus(); const s = ta.selectionStart, e2 = ta.selectionEnd, t = k === '⇥' ? '    ' : k; edit(s, e2, t, s + t.length, s + t.length); } }, k)));
+    bar.addEventListener('keydown', e => {
+      const bs = [...bar.children], i = bs.indexOf(document.activeElement); if (i < 0) return;
+      const n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? bs.length - 1 : -1; if (n < 0) return;
+      e.preventDefault(); const t = bs[Math.max(0, Math.min(bs.length - 1, n))]; bs.forEach(b => { b.tabIndex = -1; }); t.tabIndex = 0; t.focus();
+    });
     root.append(bar);
   }
   const api = {
@@ -82,17 +114,18 @@ function Terminal() {
   const root = h('div', { class: 'term', role: 'log', 'aria-live': 'polite', 'aria-label': 'Program output', tabindex: '0' });
   const empty = h('span', { class: 'term-empty' }, 'Output will appear here. Press Run ▶');
   root.append(empty);
-  let pendingInput = null;
+  let pendingInput = null, buf = '', raf = 0;
+  const flush = () => { raf = 0; if (!buf) return; empty.remove(); root.append(document.createTextNode(buf)); buf = ''; root.scrollTop = root.scrollHeight; };   // one DOM write per frame, not one per print
   const api = {
-    el: root,
-    clear() { root.textContent = ''; pendingInput = null; },
-    placeholder() { root.textContent = ''; root.append(empty); },
-    write(s) { empty.remove(); root.append(document.createTextNode(s)); root.scrollTop = root.scrollHeight; },
+    el: root, flush,
+    clear() { buf = ''; root.textContent = ''; pendingInput = null; },
+    placeholder() { buf = ''; root.textContent = ''; root.append(empty); },
+    write(s) { buf += s; if (!raf) raf = requestAnimationFrame(flush); },
     ask(prompt, suggestion, onStopCleanup) {
-      empty.remove();
+      flush(); empty.remove();
       if (prompt) root.append(document.createTextNode(prompt));
       return new Promise((resolve, reject) => {
-        const inp = h('input', { class: 'term-in', type: 'text', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
+        const inp = h('input', { class: 'term-in', type: 'text', enterkeyhint: 'go', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false',
           'aria-label': 'Type your answer for input() and press Enter', placeholder: suggestion != null ? '' : 'type here, press Enter', size: 14 });
         if (suggestion != null) inp.value = suggestion;
         const go = h('button', { type: 'button', class: 'term-go', 'aria-label': 'Submit answer' }, '↵');
@@ -111,7 +144,7 @@ function Terminal() {
       if (pendingInput) { const p = pendingInput; pendingInput = null; p.inp.replaceWith(h('span', { class: 'term-typed muted' }, '⏹')); p.go.remove(); p.reject(new Error('__STOPPED__')); }
     },
     error(err, code, vars) {
-      const ex = explainError(err, vars, code);
+      flush(); const ex = explainError(err, vars, code);
       root.append(h('div', { class: 'term-err' }, h('pre', null, tracebackText(err, code))));
       root.scrollTop = root.scrollHeight; return ex;
     },
@@ -207,6 +240,7 @@ function Playground({ code = '', stdin = [], note = '', minLines = 3, showVars =
     };
     let res;
     try { res = await PF.run(src, io); } catch (e) { res = { ok: false, stopped: true, vars: [] }; }
+    term.flush();
     if (my.stopped || res.stopped) { setLabel(btnStep, 'Step'); return; }
     ctl = null; setRunning(false); ed.markCurrent(0); setLabel(btnStep, 'Step');
     vars && vars.show(res.vars);

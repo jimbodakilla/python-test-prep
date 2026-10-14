@@ -42,3 +42,16 @@ node tests/e2e.js /tmp          # clicks through the app in headless Chrome
 node tests/e2e_level.js /tmp    # Level Up lessons, editor, loop safety
 ```
 Questions live in `build/u1.py` ... `build/u13.py`, lessons in `build/lessons.py` and `build/l8.py` ... `build/l13.py`. To add a unit, read `build/AUTHORING.md` and check it with `python3 build/check_unit.py uN --show`.
+
+## Mobile
+
+Built phone-first and audited by three independent reviews (accessibility, device/performance, visual) on 7 screen sizes.
+
+- Install it: "Add to Home Screen" gives a full-screen app that works offline (service worker, network-first with a 3 s fallback to the saved copy).
+- Symbol keys (`" ( ) : =` ...) sit in one swipeable row docked above the keyboard; Enter keeps indentation on phone keyboards too.
+- A mock test survives a closed tab, a phone call or a dead battery: the clock is wall-clock, answers are saved as you go, and "Resume my test" brings it back. A saved test is only offered back if it still matches this version of the questions.
+- Progress is merged between tabs, so two open windows can never wipe each other. The Playground remembers your code.
+- Keyboard and screen readers: answer choices behave like a radio group (arrows move, Enter picks), right/wrong is spoken as words, and focus never gets lost between questions.
+- Tests: `node tests/e2e_mobile.js`, `node tests/e2e_review.js` (regressions for every review finding), `node tests/audit_mobile.js` (10 device profiles).
+
+Not verifiable in headless Chrome, so worth a look on a real phone: the iOS and Android on-screen keyboard docking, and the Gboard Enter/Backspace behaviour.

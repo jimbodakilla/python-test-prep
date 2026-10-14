@@ -1,6 +1,6 @@
 /* app: router + shell */
 'use strict';
-const NAV = [['#/', 'Home', 'home'], ['#/learn', 'Learn', 'book'], ['#/practice', 'Practice', 'target'], ['#/level', 'Level Up', 'rocket'], ['#/test', 'Mock test', 'test'], ['#/play', 'Playground', 'code']];
+const NAV = [['#/', 'Home', 'home', 'Home'], ['#/learn', 'Learn', 'book', 'Learn'], ['#/practice', 'Practice', 'target', 'Practice'], ['#/level', 'Level Up', 'rocket', 'Level Up'], ['#/test', 'Mock test', 'test', 'Test'], ['#/play', 'Playground', 'code', 'Play']];
 let navEl;
 const THEME_NEXT = { undefined: 'light', light: 'dark', dark: undefined };
 const THEME_LABEL = { undefined: ['auto', 'Theme: automatic'], light: ['sun', 'Theme: light'], dark: ['moon', 'Theme: dark'] };
@@ -13,7 +13,7 @@ function lvlRing(info, size = 32) {
 function buildShell() {
   const app = $('#app'); app.textContent = '';
   navEl = h('nav', { class: 'nav', 'aria-label': 'Main' },
-    NAV.map(n => h('a', { href: n[0], class: 'nav-a', dataset: { to: n[0] } }, icon(n[2]), h('span', { class: 'nav-t' }, n[1]))));
+    NAV.map(n => h('a', { href: n[0], class: 'nav-a', dataset: { to: n[0] }, 'aria-label': n[1] }, icon(n[2]), h('span', { class: 'nav-t', 'aria-hidden': 'true' }, n[1]), h('span', { class: 'nav-s', 'aria-hidden': 'true' }, n[3]))));
   const themeBtn = h('button', { type: 'button', class: 'icon-btn', id: 'theme', onclick: () => { Store.data.theme = THEME_NEXT[Store.data.theme]; Store.save(); applyTheme(); paintTheme(); toast(THEME_LABEL[Store.data.theme][1]); } });
   app.append(
     h('a', { class: 'skip', href: '#view', onclick: e => { e.preventDefault(); $('#view').focus(); } }, 'Skip to content'),
@@ -66,8 +66,19 @@ async function route() {
     else if (a === 'kind') { const k = b === 'write' ? 'write' : 'fix'; const lv = c === 'level'; node = PracticeSession({ title: (lv ? 'Level Up ' : '') + (k === 'fix' ? 'bug hunt' : 'code writer'), items: mixPool(ITEMS.filter(i => i.kind === k && unitTrack(i.unit) === (lv ? 'level' : 'test')), 8), meta: { kind: k } }); isSession = true; }
     else if (a === 'endless') { node = await EndlessSession(12); isSession = true; }
     else if (a === 'sprint') { node = await TypeSprint(); isSession = true; }
-    else if (a === 'test') { node = b ? MockTest({ n: +b >= 20 ? 20 : 10, minutes: +b >= 20 ? 30 : 15, track: 'test' }) : TestHubView(); title = 'Mock test'; isSession = !!b; }
-    else if (a === 'leveltest') { node = MockTest({ n: +b >= 20 ? 20 : 10, minutes: +b >= 20 ? 40 : 20, track: 'level' }); title = 'Level Up checkpoint'; isSession = true; }
+    else if (a === 'test' || a === 'leveltest') {
+      const track = a === 'test' ? 'test' : 'level'; const size = +b >= 20 ? 20 : 10; const mins = track === 'test' ? (size >= 20 ? 30 : 15) : (size >= 20 ? 40 : 20);
+      title = track === 'test' ? 'Mock test' : 'Level Up checkpoint';
+      if (a === 'test' && !b) { node = TestHubView(); }
+      else {
+        const saved = pendingMock(); isSession = true;
+        if (saved) node = ResumePrompt(saved, () => { Store.clearMock(); route(); }, () => {
+          try { view.textContent = ''; view.append(MockTest({ n: saved.n, minutes: saved.minutes, track: saved.track, resume: saved })); toTop(); }
+          catch (err) { console.error(err); Store.clearMock(); toast('That saved test could not be reopened. Starting a fresh one.'); route(); }
+        });
+        else node = MockTest({ n: size, minutes: mins, track });
+      }
+    }
     else if (a === 'play') { node = PlayView(); title = 'Playground'; }
     else if (a === 'cheat') { node = CheatView(b); title = 'Cheat sheet'; }
     else node = h('div', { class: 'card' }, 'Page not found. ', h('a', { href: '#/' }, 'Go home'));
@@ -76,10 +87,20 @@ async function route() {
   }
   document.body.classList.toggle('in-session', isSession);
   view.append(node); document.title = title === 'Python Test Prep' ? title : title + ' · Python Test Prep'; setActive(hash);
-  window.scrollTo(0, 0);
+  toTop();
   if (!isSession) { try { view.focus({ preventScroll: true }); } catch (e) {} }
 }
 window.route = route;
 window.addEventListener('hashchange', route);
 window.addEventListener('error', e => console.error('window error', e.message));
+/* on-screen keyboard: when it opens, stop floating the action bar over the input */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const upd = () => { if (vv.scale && Math.abs(vv.scale - 1) > .01) { document.body.classList.remove('kbd-open'); document.documentElement.style.setProperty('--kb', '0px'); return; }   // pinch-zoom is not a keyboard
+    const ae = document.activeElement; const typing = ae && /^(input|textarea|select)$/i.test(ae.tagName); const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop); document.documentElement.style.setProperty('--kb', kb + 'px'); const open = !!typing && kb > 100; const was = document.body.classList.contains('kbd-open'); document.body.classList.toggle('kbd-open', open);
+    if (open && !was && ae && ae.dispatchEvent) setTimeout(() => ae.dispatchEvent(new Event('revealcaret')), 60); };
+  vv.addEventListener('resize', upd); vv.addEventListener('scroll', upd);
+  document.addEventListener('focusout', () => setTimeout(upd, 120));
+}
 buildShell(); route();
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });

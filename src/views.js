@@ -45,6 +45,7 @@ function progressText() {
     (weak.length ? `Needs more practice: ${weak.join(', ')}\n` : '') + (lv ? `Level Up lessons read: ${lv}/7 (${pct(levelReadiness())}% mastery)\n` : '') + `XP: ${d.xp}`;
 }
 async function copyText(txt) {
+  if (navigator.share && matchMedia('(pointer:coarse)').matches) { try { await navigator.share({ title: 'My Python progress', text: txt }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
   try { await navigator.clipboard.writeText(txt); toast('Copied! Paste it into a message.'); }
   catch (e) { const ta = h('textarea', { 'aria-label': 'Progress text', style: 'position:fixed;left:-999px' }, txt); document.body.append(ta); ta.select(); try { document.execCommand('copy'); toast('Copied! Paste it into a message.'); } catch (e2) { prompt('Copy this text:', txt); } ta.remove(); }
 }
@@ -300,6 +301,8 @@ function PracticeView() {
 /* ---------- TEST hub ---------- */
 function TestHubView() {
   const root = h('div', null, h('div', { class: 'page-h' }, h('h1', null, 'Mock test'), h('p', { class: 'muted' }, 'Like the real thing: no hints, no feedback until you hand it in. Questions come from all six lessons and are different each time.')));
+  const pm = pendingMock();
+  if (pm) root.append(h('div', { class: 'card resume-card' }, h('h2', null, 'A test is waiting for you'), h('p', { class: 'muted' }, `${pm.track === 'level' ? 'Level Up checkpoint' : 'Mock test'} · ${pm.ids.length} questions. Your clock is ${pm.paused ? 'paused' : 'still running'}.`), h('a', { class: 'btn primary', href: (pm.track === 'level' ? '#/leveltest/' : '#/test/') + pm.n }, icon('play'), 'Pick it back up')));
   const tm = testMocks(); const best = tm.length ? Math.max(...tm.map(m => m.score / m.total)) : null;
   root.append(h('div', { class: 'card' },
     h('div', { class: 'test-opts' },
@@ -326,13 +329,16 @@ const EXAMPLES = [
   ['★ Level Up: a list', 'scores = [90, 72, 85]\nscores.append(100)\nprint(scores)\nprint(sum(scores) / len(scores))', []],
   ['★ Level Up: a function', 'def area(w, h):\n    return w * h\n\nprint(area(3, 4))\nprint(area(2.5, 2))', []],
 ];
+const coarseP = () => window.matchMedia && matchMedia('(pointer:coarse)').matches;
 function PlayView() {
   let start = null; try { start = JSON.parse(sessionStorage.getItem('pp.play')); sessionStorage.removeItem('pp.play'); } catch (e) {}
-  const first = start || { code: EXAMPLES[1][1], stdin: EXAMPLES[1][2] };
-  const root = h('div', null, h('div', { class: 'page-h' }, h('h1', null, 'Playground'), h('p', { class: 'muted' }, 'Type any program. Press Run, or Step to go line by line. Ctrl+Enter also runs. Tab indents.')));
-  let pg = Playground({ code: first.code, stdin: first.stdin, minLines: 10, id: 'play' });
+  const draft = start ? '' : Store.getDraft();
+  const first = start || (draft ? { code: draft, stdin: [] } : { code: EXAMPLES[1][1], stdin: EXAMPLES[1][2] });
+  const keep = p => { p.ed.ta.addEventListener('input', () => { clearTimeout(keep.t); keep.t = setTimeout(() => Store.setDraft(p.getCode()), 400); }); window.addEventListener('pagehide', () => Store.setDraft(p.getCode())); return p; };
+  const root = h('div', null, h('div', { class: 'page-h' }, h('h1', null, 'Playground'), h('p', { class: 'muted' }, coarseP() ? 'Type any program. Press Run, or Step to go line by line.' : 'Type any program. Press Run, or Step to go line by line. Ctrl+Enter also runs. Tab indents.')));
+  let pg = keep(Playground({ code: first.code, stdin: first.stdin, minLines: coarseP() ? 6 : 10, id: 'play' }));
   const holder = h('div', null, pg.el);
-  const sel = h('select', { 'aria-label': 'Load an example', onchange: e => { const ex = EXAMPLES[e.target.value]; if (!ex) return; pg.stop(true); holder.textContent = ''; pg = Playground({ code: ex[1], stdin: ex[2], minLines: 10, id: 'play' }); holder.append(pg.el); } },
+  const sel = h('select', { 'aria-label': 'Load an example', onchange: e => { const ex = EXAMPLES[e.target.value]; if (!ex) return; pg.stop(true); holder.textContent = ''; pg = keep(Playground({ code: ex[1], stdin: ex[2], minLines: coarseP() ? 6 : 10, id: 'play' })); holder.append(pg.el); } },
     h('option', { value: '' }, 'Load an example…'), EXAMPLES.map((e, i) => h('option', { value: i }, e[0])));
   root.append(h('div', { class: 'card' }, h('div', { class: 'pg-bar' }, h('label', null, 'Examples '), sel), holder));
   root.append(h('div', { class: 'callout tip' }, h('div', { class: 'co-h' }, icon('bulb'), 'Challenge'), h('div', null, 'Before you press Run, write down what you think it will print. Then run it. Every surprise is a point you just earned on the test.')));
@@ -347,7 +353,7 @@ function CheatView(which) {
   root.append(h('div', { class: 'page-h' }, h('h1', null, 'Cheat sheet'), h('p', { class: 'muted' }, tab === 'test' ? 'Everything for the test on one page. Read it tonight and again before the test.' : 'The Level Up topics on one page.'),
     h('div', { class: 'seg', role: 'tablist' }, h('a', { class: 'seg-b' + (tab === 'test' ? ' on' : ''), href: '#/cheat', role: 'tab', 'aria-selected': tab === 'test' }, 'Test basics'), h('a', { class: 'seg-b' + (tab === 'level' ? ' on' : ''), href: '#/cheat/level', role: 'tab', 'aria-selected': tab === 'level' }, 'Level Up')),
     h('button', { type: 'button', class: 'btn', onclick: () => window.print() }, icon('print'), 'Print this page')));
-  const sec = (t, html) => h('section', { class: 'card cs' }, h('h2', null, t), h('div', { html }));
+  const sec = (t, html) => h('section', { class: 'card cs' }, h('h2', null, t), h('div', { html: html.replace(/<table class="tbl"/g, '<div class="tbl-wrap" tabindex="0" role="region" aria-label="' + t.replace(/"/g, '') + ' table, scrolls sideways"><table class="tbl"').replace(/<\/table>/g, '</table></div>') }));
   if (tab === 'level') {
     root.append(
       sec('8 · Decisions', `<table class="tbl"><thead><tr><th>Write</th><th>Meaning</th></tr></thead><tbody><tr><td><code>==</code> <code>!=</code> <code>&lt;</code> <code>&gt;</code> <code>&lt;=</code> <code>&gt;=</code></td><td>compare: gives <b>True</b> or <b>False</b> (a bool)</td></tr>

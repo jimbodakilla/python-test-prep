@@ -4,6 +4,24 @@
 const KIND_LABEL = { out: 'Predict the output', typed: 'Type the output', ty: 'Name the type', line: 'Find the crash', fill: 'Fill the blank', fix: 'Bug hunt', write: 'Write the code', know: 'Quick check' };
 const TYPE_OPTS = ['int', 'float', 'str', 'Error'];
 
+/* radio-group keyboard: one tab stop (the selected option), arrows move AND select, like a native radio group */
+function radioNav(btns, pick) {
+  const sync = () => { const sel = btns.findIndex(b => b.getAttribute('aria-checked') === 'true'); btns.forEach((b, k) => { b.tabIndex = k === (sel < 0 ? 0 : sel) ? 0 : -1; }); };
+  btns.forEach((b, i) => b.addEventListener('keydown', e => {
+    const d = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key]; if (!d) return;
+    e.preventDefault(); const n = (i + d + btns.length) % btns.length; btns[n].focus(); pick(n);
+  }));
+  sync(); return sync;
+}
+/* after grading: colour AND a glyph AND words for screen readers, never colour alone */
+function markOpts(btns, isGood, picked) {
+  btns.forEach((b, k) => {
+    const good = isGood(k); b.classList.add(good ? 'good' : (k === picked ? 'bad' : 'dim')); b.disabled = true;
+    if (good || k === picked) b.append(h('span', { class: 'sr-only' }, good ? (k === picked ? ' (your answer, correct)' : ' (the correct answer)') : ' (your answer, incorrect)'));
+  });
+}
+const foldTyped = (t, answer) => /[^\x00-\x7f]/.test(answer) ? t : t.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'").replace(/\u00A0/g, ' ').replace(/[\u2013\u2014]/g, '-').replace(/\u2026/g, '...');
+
 /* Build an instance. Anything that shuffles is shuffled ONCE here and cached. */
 function makeInst(item) {
   const inst = { item, picked: null, text: '', code: null, done: false, ok: null, tries: 0, hints: 0 };
@@ -93,15 +111,17 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
 
   function choiceButtons(labels, mono, cls = '') {
     const wrap = optsWrap(); const btns = [];
+    const allMono = labels.some(mono);
     labels.forEach((lab, i) => {
-      const b = h('button', { type: 'button', class: 'opt ' + cls + (mono(lab) ? ' mono' : ''), role: 'radio', 'aria-checked': 'false', dataset: { i: i + '' },
+      const b = h('button', { type: 'button', class: 'opt ' + cls + (allMono ? ' mono' : ''), role: 'radio', 'aria-checked': 'false', dataset: { i: i + '' },
         onclick: () => select(i) }, h('span', { class: 'opt-n', 'aria-hidden': 'true' }, String(i + 1)), h('span', { class: 'opt-t' }, optLabel(lab)));
       btns.push(b); wrap.append(b);
     });
     function select(i) {
       if (inst.done) return; inst.picked = i; btns.forEach((b, k) => { b.classList.toggle('sel', k === i); b.setAttribute('aria-checked', k === i ? 'true' : 'false'); });
-      if (api.onPick) api.onPick(i); notify();
+      syncTab(); if (api.onPick) api.onPick(i); notify();
     }
+    const syncTab = radioNav(btns, i => select(i));
     api.select = select; api.btns = btns;
     return wrap;
   }
@@ -118,22 +138,24 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
     api.yours = () => inst.picked == null ? '(no answer)' : labels[inst.picked];
     api.correctText = () => opts[0];
     api.grade = async () => ({ ok: inst.order[inst.picked] === 0 });
-    api.mark = () => api.btns.forEach((b, k) => { const good = inst.order[k] === 0; b.classList.add(good ? 'good' : (k === inst.picked ? 'bad' : 'dim')); b.disabled = true; });
+    api.mark = () => markOpts(api.btns, k => inst.order[k] === 0, inst.picked);
   } else if (kind === 'ty') {
     const code = (it.setup ? it.setup + '\n' : '') + '# what type is this?\nresult = ' + it.expr;
     root.append(codeBlock(code)); const n = stdinNote(it.stdin); n && root.append(n);
     const CH = it.choices || TYPE_OPTS; const wrap = optsWrap(); wrap.classList.add('opts-ty'); if (CH.length > 4) wrap.classList.add('opts-ty5'); const btns = [];
+    const pickTy = i => { if (inst.done) return; inst.picked = i; btns.forEach((x, k) => { x.classList.toggle('sel', k === i); x.setAttribute('aria-checked', k === i ? 'true' : 'false'); }); syncTy(); notify(); };
     CH.forEach((t, i) => {
-      const b = h('button', { type: 'button', class: 'opt ty-' + t, role: 'radio', 'aria-checked': 'false', onclick: () => { if (inst.done) return; inst.picked = i; btns.forEach((x, k) => { x.classList.toggle('sel', k === i); x.setAttribute('aria-checked', k === i ? 'true' : 'false'); }); notify(); } },
+      const b = h('button', { type: 'button', class: 'opt ty-' + t, role: 'radio', 'aria-checked': 'false', onclick: () => pickTy(i) },
         h('span', { class: 'opt-n', 'aria-hidden': 'true' }, String(i + 1)), h('span', { class: 'opt-t' }, t === 'Error' ? [icon('warn'), ' Error'] : t === 'NoneType' ? 'None' : t));
       btns.push(b); wrap.append(b);
     });
+    const syncTy = radioNav(btns, pickTy);
     api.btns = btns; api.select = i => btns[i].click(); root.append(wrap);
     api.answered = () => inst.picked != null;
     api.yours = () => inst.picked == null ? '(no answer)' : CH[inst.picked];
     api.correctText = () => it.answer;
     api.grade = async () => ({ ok: CH[inst.picked] === it.answer });
-    api.mark = () => btns.forEach((b, k) => { const good = CH[k] === it.answer; b.classList.add(good ? 'good' : (k === inst.picked ? 'bad' : 'dim')); b.disabled = true; });
+    api.mark = () => markOpts(btns, k => CH[k] === it.answer, inst.picked);
   } else if (kind === 'line') {
     root.append(codeBlock(it.code)); const n = stdinNote(it.stdin); n && root.append(n);
     const labels = Array.from({ length: it.nlines }, (_, i) => 'Line ' + (i + 1)).concat(['No crash - it runs fine']);
@@ -143,7 +165,7 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
     api.yours = () => inst.picked == null ? '(no answer)' : labels[inst.picked];
     api.correctText = () => labels[ans()];
     api.grade = async () => ({ ok: inst.picked === ans() });
-    api.mark = () => api.btns.forEach((b, k) => { b.classList.add(k === ans() ? 'good' : (k === inst.picked ? 'bad' : 'dim')); b.disabled = true; });
+    api.mark = () => markOpts(api.btns, k => k === ans(), inst.picked);
   } else if (kind === 'typed') {
     root.append(codeBlock(it.code)); const n = stdinNote(it.stdin); n && root.append(n); { const pn = promptNote(); pn && root.append(pn); }
     const ta = h('textarea', { class: 'typed-in', rows: Math.max(2, it.answer.split('\n').length + 1), spellcheck: 'false', autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off',
@@ -156,7 +178,7 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
     api.yours = () => inst.text || '(no answer)';
     api.correctText = () => it.answer;
     api.grade = async () => {
-      const got = norm(inst.text).replace(/^\s*\n+/, '').trimStart(); const ok = got === it.answer.trimStart(); let near = null;
+      const got = norm(foldTyped(inst.text, it.answer)).replace(/^\s*\n+/, '').trimStart(); const ok = got === it.answer.trimStart(); let near = null;
       if (!ok) {
         if (got.replace(/\s+/g, '') === it.answer.replace(/\s+/g, '')) near = 'So close! The letters are right but the <b>spaces</b> are off. Commas add a space; + does not.';
         else if (got.replace(/["']/g, '') === it.answer) near = 'Careful: Python <b>never prints the quotes</b> around text.';
@@ -177,7 +199,7 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
     api.yours = () => inst.picked == null ? '(no answer)' : labels[inst.picked];
     api.correctText = () => it.opts[0];
     api.grade = async () => ({ ok: inst.order[inst.picked] === 0 });
-    api.mark = () => api.btns.forEach((b, k) => { const good = inst.order[k] === 0; b.classList.add(good ? 'good' : (k === inst.picked ? 'bad' : 'dim')); b.disabled = true; });
+    api.mark = () => markOpts(api.btns, k => inst.order[k] === 0, inst.picked);
   } else if (kind === 'fix' || kind === 'write') {
     const ex = it.tests[0];
     if (kind === 'write') {
@@ -185,7 +207,7 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
       root.append(sample);
     } else if (ex.stdin.length) root.append(stdinNote(ex.stdin));
     const start = kind === 'fix' ? it.buggy : (it.starter || '');
-    const pg = Playground({ code: start, stdin: kind === 'fix' || kind === 'write' ? ex.stdin : [], minLines: kind === 'write' ? (it.unit >= 8 ? 9 : 5) : (it.unit >= 8 ? 6 : 4), showVars: mode !== 'test', id: it.id });
+    const pg = Playground({ code: start, stdin: kind === 'fix' || kind === 'write' ? ex.stdin : [], minLines: Math.min(kind === 'write' ? (it.unit >= 8 ? 9 : 5) : (it.unit >= 8 ? 6 : 4), window.matchMedia && matchMedia('(pointer:coarse)').matches ? 4 : 99), showVars: mode !== 'test', id: it.id });
     pg.ed.ta.addEventListener('input', () => { inst.code = pg.getCode(); notify(); });
     root.append(pg.el); api.pg = pg;
     if (kind === 'write') root.append(h('div', { class: 'hintbar' }));
@@ -200,10 +222,12 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
   return api;
 }
 
+const focusPrompt = el => { const p = $('.q-prompt', el); if (p) { p.tabIndex = -1; try { p.focus({ preventScroll: true }); } catch (e) {} } };
+
 /* ---------- feedback block ---------- */
 async function feedbackNode(inst, view, gr, { first = true, streak = 0 } = {}) {
   const it = inst.item;
-  const box = h('div', { class: 'feedback ' + (gr.ok ? 'ok' : 'no'), role: 'status', 'aria-live': 'polite' });
+  const box = h('div', { class: 'feedback ' + (gr.ok ? 'ok' : 'no') });
   const headline = gr.ok ? (first ? cheerLine(true, streak) : 'Got it this time!') : (inst.tries < 3 && (it.kind === 'fix' || it.kind === 'write') ? 'Not yet. Try again!' : cheerLine(false, 0));
   box.append(Pip(gr.ok ? (streak >= 3 ? 'cheer' : 'happy') : 'oops', 64));
   box.append(h('div', { class: 'fb-h' }, icon(gr.ok ? 'check' : 'bulb'), headline));
@@ -267,14 +291,15 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
     if (idx >= queue.length) return finish();
     const inst = queue[idx]; const view = QView(inst, { mode: 'practice', onChange: updateBtn });
     const check = h('button', { type: 'button', class: 'btn primary big', disabled: true, onclick: submit }, 'Check answer');
-    const next = h('button', { type: 'button', class: 'btn primary big', onclick: () => { idx++; showNext(); window.scrollTo({ top: 0, behavior: 'smooth' }); } }, idx + 1 >= queue.length ? ['See results', icon('arrow')] : ['Next', icon('arrow')]);
-    const fbSlot = h('div', { class: 'fb-slot' });
+    const next = h('button', { type: 'button', class: 'btn primary big', onclick: () => { idx++; showNext(); toTop(); } }, idx + 1 >= queue.length ? ['See results', icon('arrow')] : ['Next', icon('arrow')]);
+    const fbSlot = h('div', { class: 'fb-slot', role: 'status', 'aria-live': 'polite' });
     const actions = h('div', { class: 'q-actions' }, check);
     const card = h('div', { class: 'card q-card' }, view.el, fbSlot, actions);
     card.addEventListener('submitkey', () => { if (!check.disabled) check.click(); });
     stage.append(card);
     sessionCtl = { inst, view, check, submit, next, actions, fbSlot };
     function updateBtn() { check.disabled = !view.answered() || inst.done; }
+    function showFeedback() { const fb = $('.feedback', fbSlot); if (fb) fb.scrollIntoView({ block: 'nearest', behavior: REDUCED ? 'auto' : 'smooth' }); }
     async function submit() {
       if (inst.done || check.disabled && inst.kind !== 'fix') return;
       check.disabled = true; check.textContent = 'Checking…';
@@ -283,7 +308,7 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
       const first = inst.tries === 1 && !retried.has(inst.item.id);
       const isCode = inst.item.kind === 'fix' || inst.item.kind === 'write';
       if (isCode && !gr.ok && inst.tries < 3) {   // coding tasks: let them try again before revealing
-        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, gr, { first, streak }));
+        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, gr, { first, streak })); showFeedback();
         check.disabled = false; check.textContent = 'Check again';
         if (inst.tries >= 2) actions.append(h('button', { type: 'button', class: 'btn ghost', onclick: () => finishItem(gr, true) }, 'Skip & show answer'));
         hintsUI(inst, view, actions);
@@ -292,7 +317,7 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
       await finishItem(gr, false);
       async function finishItem(g, skipped) {
         inst.done = true; inst.ok = g.ok; view.lock();
-        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, g, { first, streak: g.ok ? streak + 1 : 0 }));
+        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, g, { first, streak: g.ok ? streak + 1 : 0 })); showFeedback(); buzz(g.ok ? 12 : [18, 40, 18]);
         if (first || !results.find(r => r.id === inst.item.id)) {
           results.push({ id: inst.item.id, ok: g.ok && first, item: inst.item });
         }
@@ -306,7 +331,9 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
     }
     // coding hints
     if (['fix', 'write'].includes(inst.item.kind)) hintsUI(inst, view, actions);
-    if (['typed'].includes(inst.item.kind)) setTimeout(() => view.ta && view.ta.focus(), 50);
+    const fine = !window.matchMedia || !matchMedia('(pointer:coarse)').matches;      // never pop the phone keyboard over the code they need to read
+    if (inst.item.kind === 'typed' && fine) setTimeout(() => view.ta && view.ta.focus(), 50);
+    else focusPrompt(view.el);
   }
   function hintsUI(inst, view, actions) {
     const it = inst.item; if (it.kind !== 'write' || !it.hints || !it.hints.length) return;
@@ -357,7 +384,11 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
     else if (e.key === 'Enter') {
       if (['a', 'select', 'summary', 'input'].includes(tag)) return;
       const cls = e.target.classList; const isOpt = cls && cls.contains('opt');
-      if (tag === 'button' && !isOpt && e.target !== check && e.target !== next) return;
+      if (isOpt) {      // Enter on an option picks THAT option (native click). Only an already-picked option submits.
+        if (!inst.done && e.target.getAttribute('aria-checked') === 'true' && !check.disabled) { check.click(); e.preventDefault(); }
+        return;
+      }
+      if (tag === 'button' && e.target !== check && e.target !== next) return;
       if (inst.done) { next.click(); e.preventDefault(); } else if (!check.disabled) { check.click(); e.preventDefault(); }
     }
   }
@@ -368,7 +399,7 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
 function startItems(title, items, meta) {
   const view = $('#view'); view.textContent = ''; document.body.classList.add('in-session');
   view.append(PracticeSession({ title, items, meta, backHref: '#/practice', backLabel: 'Practice' }));
-  window.scrollTo(0, 0);
+  toTop();
 }
 
 /* ---------- picking item sets ---------- */
@@ -420,44 +451,103 @@ function buildMock(n, track = 'test') {
   return uniq.sort((a, b) => order[a.kind] - order[b.kind]);
 }
 
-function MockTest({ n = 20, minutes = 30, track = 'test' }) {
-  const items = buildMock(n, track); const insts = items.map(makeInst);
+const MOCK_MAX_AGE = 8 * 3600 * 1000;
+let _bankSig = null;
+const bankHash = () => _bankSig || (_bankSig = (() => { let x = 5381; for (const it of ITEMS) { const t = it.id + itemSig(it); for (let i = 0; i < t.length; i++) x = ((x * 33) ^ t.charCodeAt(i)) >>> 0; } return x.toString(36); })());
+const optCount = it => it.kind === 'out' ? it.options.length : (it.kind === 'know' || it.kind === 'fill') ? it.opts.length : 0;
+/* a saved test is only offered back if it still matches THIS version of the question bank and is well-formed; otherwise it is dropped, never crashed on */
+function pendingMock() {
+  const r = Store.getMock(); if (!r) return null;
+  let ok = false;
+  try {
+    const L = Array.isArray(r.ids) ? r.ids.length : 0;
+    ok = r.v === 1 && r.bank === bankHash() && (r.track === 'test' || r.track === 'level') && L > 0 && Date.now() - r.ts < MOCK_MAX_AGE && Number.isFinite(r.minutes) && Number.isFinite(r.endAt) && Number.isFinite(r.remaining)
+      && r.ids.every(id => BYID[id]) && ['orders', 'picked', 'text', 'code'].every(k => Array.isArray(r[k]) && r[k].length === L) && Array.isArray(r.flagged)
+      && r.ids.every((id, i) => {
+        const n = optCount(BYID[id]), o = r.orders[i], pk = r.picked[i];
+        if (n) { if (!Array.isArray(o) || o.length !== n || [...o].sort((x, y) => x - y).some((v, k) => v !== k)) return false; }
+        return (pk == null || (Number.isInteger(pk) && pk >= 0 && pk < (n || (BYID[id].kind === 'ty' ? (BYID[id].choices || TYPE_OPTS).length : BYID[id].kind === 'line' ? BYID[id].nlines + 1 : 0)))) && typeof r.text[i] === 'string' && (r.code[i] == null || typeof r.code[i] === 'string');
+      });
+  } catch (e) { ok = false; }
+  if (!ok) { Store.clearMock(); return null; }
+  return r;
+}
+function ResumePrompt(run, startFresh, resume) {
+  const label = run.track === 'level' ? 'Level Up checkpoint' : 'Mock test';
+  const answered = run.picked.filter((x, i) => x != null || (run.text[i] || '').trim() || run.code[i]).length;
+  return h('div', { class: 'session' }, h('div', { class: 'card summary' },
+    h('div', { class: 'sum-top' }, Pip('think', 120), h('h1', { class: 'h2like' }, 'You have a test in progress'), h('p', { class: 'muted' }, `${label}: ${answered} of ${run.ids.length} answered. Your time kept ${run.paused ? 'paused' : 'running'}, just like a real test.`)),
+    h('div', { class: 'sum-actions' }, h('button', { type: 'button', class: 'btn primary big', onclick: resume }, icon('play'), 'Resume my test'), h('button', { type: 'button', class: 'btn', onclick: startFresh }, 'Throw it away and start a new one'))));
+}
+function MockTest({ n = 20, minutes = 30, track = 'test', resume = null }) {
+  if (resume) { minutes = resume.minutes; }
+  const items = resume ? resume.ids.map(id => BYID[id]) : buildMock(n, track); const insts = items.map(makeInst);
+  if (resume) insts.forEach((inst, i) => { if (resume.orders[i]) inst.order = resume.orders[i]; inst.picked = resume.picked[i] == null ? null : resume.picked[i]; inst.text = resume.text[i] || ''; inst.code = resume.code[i] == null ? null : resume.code[i]; });
   const root = h('div', { class: 'session mock' });
-  const total = insts.length; let cur = 0; const flagged = new Set(); let secs = minutes * 60, timerOn = true, startTs = Date.now(), finished = false;
-  const views = insts.map(i => QView(i, { mode: 'test', onChange: () => { renderNav(); } }));
+  const total = insts.length; let cur = resume ? Math.min(resume.cur || 0, total - 1) : 0; const flagged = new Set(resume ? resume.flagged : []); let finished = false;
+  let timerOn = resume ? !resume.paused : true, remaining = resume ? resume.remaining : minutes * 60, endAt = resume && !resume.paused ? resume.endAt : Date.now() + minutes * 60000;
+  const secsLeft = () => timerOn ? Math.max(0, Math.round((endAt - Date.now()) / 1000)) : remaining;
+  let dead = false;
+  const persist = () => {
+    if (finished || dead) return;
+    try {
+      Store.setMock({ v: 1, bank: bankHash(), ts: Date.now(), track, n, minutes, ids: items.map(i => i.id), orders: insts.map(i => i.order || null), picked: insts.map(i => i.picked == null ? null : i.picked), text: insts.map(i => i.text || ''), code: insts.map(i => i.code == null ? null : i.code),
+        flagged: [...flagged], cur, endAt, remaining: secsLeft(), paused: !timerOn });
+    } catch (e) { /* storage full or blocked: the test still works */ }
+  };
+  const views = insts.map(i => QView(i, { mode: 'test', onChange: () => { renderNav(); persist(); } }));
   const timeTxt = h('span', null, ''); const timerEl = h('span', { class: 'timer', role: 'timer', 'aria-label': 'time left' }, icon('clock'), timeTxt);
   const navEl = h('div', { class: 'mock-nav', role: 'navigation', 'aria-label': 'Questions' });
   const stage = h('div', { class: 'sess-stage' });
-  const pauseLab = h('span', null, 'Pause');
-  const pauseBtn = h('button', { type: 'button', class: 'btn ghost small', onclick: () => { timerOn = !timerOn; pauseLab.textContent = timerOn ? 'Pause' : 'Resume'; pauseBtn.firstChild.replaceWith(icon(timerOn ? 'pause' : 'play')); stage.classList.toggle('paused', !timerOn); } }, icon('pause'), pauseLab);
-  const top = h('div', { class: 'sess-top' }, h('a', { class: 'back', href: track === 'level' ? '#/level' : '#/test', onclick: e => { if (!finished && !confirm('Leave the test? Your answers will be lost.')) e.preventDefault(); } }, icon('back'), 'Leave'),
+  const pauseLab = h('span', null, timerOn ? 'Pause' : 'Resume');
+  const pauseBtn = h('button', { type: 'button', class: 'btn ghost small', 'aria-label': timerOn ? 'Pause the clock' : 'Resume the clock', onclick: () => {
+    if (timerOn) { remaining = secsLeft(); timerOn = false; } else { endAt = Date.now() + remaining * 1000; timerOn = true; }
+    pauseBtn.setAttribute('aria-label', timerOn ? 'Pause the clock' : 'Resume the clock'); toast(timerOn ? 'Clock running' : 'Paused. Questions are hidden until you resume.');
+    pauseLab.textContent = timerOn ? 'Pause' : 'Resume'; pauseBtn.firstChild.replaceWith(icon(timerOn ? 'pause' : 'play')); stage.classList.toggle('paused', !timerOn); persist(); } }, icon(timerOn ? 'pause' : 'play'), pauseLab);
+  if (!timerOn) stage.classList.add('paused');
+  const top = h('div', { class: 'sess-top' }, h('a', { class: 'back', href: track === 'level' ? '#/level' : '#/test', onclick: () => { if (!finished) { persist(); toast('Test saved. Come back to resume it.'); } } }, icon('back'), 'Leave'),
     h('h1', { class: 'sess-title' }, `${track === 'level' ? 'Level Up checkpoint' : 'Mock test'} · ${total} questions`), h('div', { class: 'sess-stats' }, timerEl, pauseBtn));
-  root.append(top, navEl, stage);
+  const live = h('div', { class: 'sr-only', role: 'status', 'aria-live': 'polite' }); const said = new Set();
+  root.append(top, navEl, stage, live);
   const fmt = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  const paintTime = () => { const s = secsLeft(); timeTxt.textContent = fmt(s); timerEl.classList.toggle('low', s < 300);
+    const m = s <= 60 ? 60 : s <= 300 ? 300 : 0; if (m && s > 0 && timerOn && !said.has(m)) { said.add(m); live.textContent = m === 60 ? 'One minute left.' : 'Five minutes left.'; } return s; };
+  const cleanup = () => { dead = true; clearInterval(tick); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', persist); };
+  let beat = 0;
   const tick = setInterval(() => {
-    if (!root.isConnected || finished) { clearInterval(tick); return; }
-    if (timerOn) secs--; timeTxt.textContent = fmt(Math.max(0, secs)); timerEl.classList.toggle('low', secs < 300);
-    if (secs <= 0) { clearInterval(tick); toast('Time is up! Grading…'); finish(true); }
+    if (!root.isConnected || finished) { cleanup(); return; }
+    const s = paintTime(); if (++beat % 5 === 0) persist();
+    if (s <= 0 && timerOn) { cleanup(); toast('Time is up! Grading…'); finish(true); }
   }, 1000);
-  timeTxt.textContent = fmt(secs);
+  const onVis = () => { if (document.visibilityState === 'hidden') persist(); else { const s = paintTime(); if (s <= 0 && timerOn && !finished) { toast('Time is up! Grading…'); finish(true); } } };
+  document.addEventListener('visibilitychange', onVis); window.addEventListener('pagehide', persist);
+  paintTime();
+  if (resume) views.forEach((v, i) => {                      // put saved answers back into the controls
+    const inst = insts[i];
+    if (inst.picked != null && v.select) v.select(inst.picked);
+    if (inst.text && v.ta) { v.ta.value = inst.text; }
+    if (inst.code != null && v.pg) v.pg.setCode(inst.code);
+  });
+  persist();
 
   function renderNav() {
     navEl.textContent = '';
+    setTimeout(() => { const c = $('.nav-dot.cur', navEl); if (c && navEl.scrollWidth > navEl.clientWidth) navEl.scrollTo({ left: c.offsetLeft - navEl.clientWidth / 2 + c.offsetWidth / 2, behavior: 'auto' }); }, 0);
     insts.forEach((inst, i) => {
       const ans = views[i].answered && views[i].answered();
-      navEl.append(h('button', { type: 'button', class: 'nav-dot' + (i === cur ? ' cur' : '') + (ans ? ' ans' : '') + (flagged.has(i) ? ' flag' : ''), 'aria-label': `Question ${i + 1}${ans ? ', answered' : ''}${flagged.has(i) ? ', flagged' : ''}`, onclick: () => go(i) }, String(i + 1)));
+      navEl.append(h('button', { type: 'button', class: 'nav-dot' + (i === cur ? ' cur' : '') + (ans ? ' ans' : '') + (flagged.has(i) ? ' flag' : ''), 'aria-label': `Question ${i + 1}${ans ? ', answered' : ''}${flagged.has(i) ? ', flagged' : ''}`, 'aria-current': i === cur ? 'step' : null, onclick: () => go(i) }, String(i + 1)));
     });
   }
   function go(i) {
-    cur = i; stage.textContent = ''; renderNav();
+    cur = i; stage.textContent = ''; renderNav(); persist();
     const view = views[i]; const inst = insts[i];
-    const flagLab = h('span', null, flagged.has(i) ? 'Flagged' : 'Flag for review');
-    const flag = h('button', { type: 'button', class: 'btn ghost small', 'aria-pressed': flagged.has(i) ? 'true' : 'false', onclick: () => { flagged.has(i) ? flagged.delete(i) : flagged.add(i); flagLab.textContent = flagged.has(i) ? 'Flagged' : 'Flag for review'; flag.setAttribute('aria-pressed', flagged.has(i)); renderNav(); } }, icon('flag'), flagLab);
+    const flagLab = h('span', { class: 'lbl' }, flagged.has(i) ? 'Flagged' : 'Flag for review');
+    const flag = h('button', { type: 'button', class: 'btn ghost small', 'aria-label': 'Flag for review', 'aria-pressed': flagged.has(i) ? 'true' : 'false', onclick: () => { flagged.has(i) ? flagged.delete(i) : flagged.add(i); flagLab.textContent = flagged.has(i) ? 'Flagged' : 'Flag for review'; flag.setAttribute('aria-pressed', flagged.has(i)); renderNav(); persist(); } }, icon('flag'), flagLab);
     const prev = h('button', { type: 'button', class: 'btn', disabled: i === 0, onclick: () => go(i - 1) }, icon('back'), 'Back');
     const nxt = i === total - 1 ? h('button', { type: 'button', class: 'btn primary', onclick: () => review() }, 'Review & finish') : h('button', { type: 'button', class: 'btn primary', onclick: () => go(i + 1) }, 'Next', icon('arrow'));
     const note = ['fix', 'write'].includes(inst.item.kind) ? h('p', { class: 'muted small' }, 'Use Run to test your code with your own inputs. It will be graded with hidden tests at the end.') : null;
     stage.append(h('div', { class: 'card q-card' }, h('div', { class: 'qnum' }, `Question ${i + 1} of ${total}`), view.el, note, h('div', { class: 'q-actions between' }, prev, flag, nxt)));
-    window.scrollTo({ top: 0 });
+    toTop(); focusPrompt(view.el);
   }
   function review() {
     stage.textContent = '';
@@ -468,21 +558,21 @@ function MockTest({ n = 20, minutes = 30, track = 'test' }) {
       h('div', { class: 'q-actions between' }, h('button', { type: 'button', class: 'btn', onclick: () => go(un[0] != null ? un[0] : 0) }, 'Go back and check'), h('button', { type: 'button', class: 'btn primary big', onclick: () => finish(false) }, 'Hand it in'))));
   }
   async function finish(timeUp) {
-    if (finished) return; finished = true; clearInterval(tick);
+    if (finished) return; finished = true; cleanup(); root.classList.add('done');
     stage.textContent = ''; stage.append(h('div', { class: 'card' }, h('p', null, 'Grading…')));
     const graded = [];
     for (let i = 0; i < total; i++) {
       const inst = insts[i], view = views[i]; let gr;
       if (!(view.answered && view.answered()) && !['fix', 'write'].includes(inst.item.kind)) gr = { ok: false, skipped: true };
       else if (!(view.answered && view.answered())) gr = { ok: false, skipped: true };
-      else gr = await view.grade();
+      else { try { gr = await view.grade(); } catch (err) { console.error(err); gr = { ok: false, error: true }; } }
       graded.push({ inst, view, gr });
       Store.record(inst.item.id, gr.ok);
     }
     const right = graded.filter(g => g.gr.ok).length;
     const bySkill = {}; graded.forEach(g => { const s = g.inst.item.skill; bySkill[s] = bySkill[s] || { t: 0, ok: 0 }; bySkill[s].t++; if (g.gr.ok) bySkill[s].ok++; });
-    const used = Math.round((Date.now() - startTs) / 1000);
-    Store.data.mocks.push({ ts: Date.now(), score: right, total, secs: used, track }); Store.save(); Store.addXp(right * 5);
+    const used = Math.max(0, minutes * 60 - secsLeft());
+    Store.data.mocks.push({ ts: Date.now(), score: right, total, secs: used, track }); Store.save(); Store.addXp(right * 5); Store.clearMock();
     const frac = right / total;
     const missed = graded.filter(g => !g.gr.ok).map(g => g.inst.item);
     const verdict = frac >= 0.9 ? 'Test-ready!' : frac >= 0.75 ? 'Strong. A little polish and you are there.' : frac >= 0.6 ? 'Solid base. Fix the misses below.' : 'Keep going. Every miss below teaches you something.';
@@ -514,8 +604,8 @@ function MockTest({ n = 20, minutes = 30, track = 'test' }) {
       h('div', { class: 'sum-actions' }, missed.length ? h('button', { type: 'button', class: 'btn primary', onclick: () => startItems('Fix my test misses', missed, { kind: 'retry' }) }, `Practice the ${missed.length} I missed`) : null,
         h('a', { class: 'btn', href: track === 'level' ? '#/level' : '#/test' }, 'Another test'), h('a', { class: 'btn ghost', href: '#/' }, 'Home'))),
       h('h3', { class: 'rev-h' }, 'Question by question'), rev);
-    window.scrollTo({ top: 0 }); if (frac >= .8) confetti();
+    toTop(); if (frac >= .8) confetti();
   }
-  go(0);
+  go(cur);
   return root;
 }
