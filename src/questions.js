@@ -18,7 +18,7 @@ function optLabel(text) {
   lines.forEach((ln, i) => {
     if (i) frag.append(document.createElement('br'));
     const m = /^Error: (\w+)$/.exec(ln);
-    if (m) frag.append(h('span', { class: 'o-err' }, '💥 ' + m[1]));
+    if (m) frag.append(h('span', { class: 'o-err' }, icon('warn'), h('span', { class: 'sr-only' }, 'Error: '), m[1]));
     else frag.append(ln === '' ? h('span', { class: 'muted' }, '(blank line)') : document.createTextNode(ln));
   });
   return frag;
@@ -27,7 +27,7 @@ const looksLikeCode = t => /[()"=]|\n|^\d/.test(t);
 
 function stdinNote(stdin) {
   if (!stdin || !stdin.length) return null;
-  return h('div', { class: 'stdin-note' }, h('span', { class: 'sn-ico', 'aria-hidden': 'true' }, '⌨'), h('span', null, 'The user types: '),
+  return h('div', { class: 'stdin-note' }, h('span', { class: 'sn-ico', 'aria-hidden': 'true' }, icon('term')), h('span', null, 'The user types: '),
     stdin.map((s, i) => h('span', { class: 'sn-chip' }, h('code', null, s === '' ? '(just Enter)' : s), i < stdin.length - 1 ? h('span', { class: 'sn-then' }, 'then') : null)));
 }
 
@@ -59,15 +59,15 @@ async function gradeCode(it, code) {
 }
 function testResultsNode(g, it, code) {
   const box = h('div', { class: 'tests' });
-  if (g.must.length) box.append(h('div', { class: 'test-must' }, g.must.map(m => h('p', null, '⚠ ' + m))));
+  if (g.must.length) box.append(h('div', { class: 'test-must' }, g.must.map(m => h('p', null, icon('warn'), ' ' + m))));
   g.tests.forEach((t, i) => {
     const inp = t.stdin.length ? t.stdin.map(s => s === '' ? '(Enter)' : s).join(', ') : 'no input';
-    const row = h('div', { class: 'test ' + (t.pass ? 'pass' : 'fail') }, h('div', { class: 'test-h' }, (t.pass ? '✔ ' : '✘ ') + 'Test ' + (i + 1), h('span', { class: 'test-in' }, ' - typed: ' + inp)));
+    const row = h('div', { class: 'test ' + (t.pass ? 'pass' : 'fail') }, h('div', { class: 'test-h' }, icon(t.pass ? 'check' : 'x'), ' Test ' + (i + 1), h('span', { class: 'test-in' }, ' - typed: ' + inp)));
     if (!t.pass) {
       if (t.error) {
         const ex = explainError(t.error, [], code);
-        row.append(h('div', { class: 'test-err', html: `<b>💥 ${esc(t.error.type === 'NotInCourse' ? 'Not part of this course' : t.error.type)}</b> on line ${t.error.line}: ${ex.what}` }));
-      } else { const dg = diagnose(t.got, t.expect); if (dg) row.append(h('div', { class: 'diag', html: '💡 ' + dg })); row.append(h('div', { class: 'diff' },
+        row.append(h('div', { class: 'test-err', html: `<b>${esc(t.error.type === 'NotInCourse' ? 'Not part of this course' : t.error.type)}</b> on line ${t.error.line}: ${ex.what}` }));
+      } else { const dg = diagnose(t.got, t.expect); if (dg) row.append(h('div', { class: 'diag', html: dg })); row.append(h('div', { class: 'diff' },
         h('div', null, h('span', { class: 'diff-l' }, 'Should print'), h('pre', null, t.expect === '' ? '(nothing)' : t.expect)),
         h('div', null, h('span', { class: 'diff-l' }, 'Yours printed'), h('pre', null, t.got === '' ? '(nothing)' : t.got)))); }
     }
@@ -125,7 +125,7 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
     const CH = it.choices || TYPE_OPTS; const wrap = optsWrap(); wrap.classList.add('opts-ty'); if (CH.length > 4) wrap.classList.add('opts-ty5'); const btns = [];
     CH.forEach((t, i) => {
       const b = h('button', { type: 'button', class: 'opt ty-' + t, role: 'radio', 'aria-checked': 'false', onclick: () => { if (inst.done) return; inst.picked = i; btns.forEach((x, k) => { x.classList.toggle('sel', k === i); x.setAttribute('aria-checked', k === i ? 'true' : 'false'); }); notify(); } },
-        h('span', { class: 'opt-n', 'aria-hidden': 'true' }, String(i + 1)), h('span', { class: 'opt-t' }, t === 'Error' ? '💥 Error' : t === 'NoneType' ? 'None' : t));
+        h('span', { class: 'opt-n', 'aria-hidden': 'true' }, String(i + 1)), h('span', { class: 'opt-t' }, t === 'Error' ? [icon('warn'), ' Error'] : t === 'NoneType' ? 'None' : t));
       btns.push(b); wrap.append(b);
     });
     api.btns = btns; api.select = i => btns[i].click(); root.append(wrap);
@@ -201,11 +201,12 @@ function QView(inst, { mode = 'practice', onChange } = {}) {
 }
 
 /* ---------- feedback block ---------- */
-async function feedbackNode(inst, view, gr, { first = true } = {}) {
+async function feedbackNode(inst, view, gr, { first = true, streak = 0 } = {}) {
   const it = inst.item;
   const box = h('div', { class: 'feedback ' + (gr.ok ? 'ok' : 'no'), role: 'status', 'aria-live': 'polite' });
-  const head = h('div', { class: 'fb-h' }, gr.ok ? (first ? '✅ Correct!' : '✅ Got it this time') : '❌ Not quite');
-  box.append(head);
+  const headline = gr.ok ? (first ? cheerLine(true, streak) : 'Got it this time!') : (inst.tries < 3 && (it.kind === 'fix' || it.kind === 'write') ? 'Not yet. Try again!' : cheerLine(false, 0));
+  box.append(Pip(gr.ok ? (streak >= 3 ? 'cheer' : 'happy') : 'oops', 64));
+  box.append(h('div', { class: 'fb-h' }, icon(gr.ok ? 'check' : 'bulb'), headline));
   if (!gr.ok && gr.near) box.append(h('p', { class: 'fb-near', html: gr.near }));
   if (it.kind === 'fix' || it.kind === 'write') {
     if (gr.g) box.append(testResultsNode(gr.g, it, gr.code));
@@ -224,7 +225,7 @@ async function feedbackNode(inst, view, gr, { first = true } = {}) {
     const btn = h('button', { type: 'button', class: 'btn small', onclick: async () => {
       btn.remove(); const tr = await transcript(code, stdin);
       holder.append(h('div', { class: 'showme-l' }, 'What Python really does:'), it.kind === 'ty' || it.kind === 'fill' ? codeBlock(code, { compact: true }) : null, renderTranscript(tr, code));
-    } }, '▶ Run it and see');
+    } }, icon('play'), 'Run it and see');
     holder.append(btn); box.append(holder);
   }
   if ((it.kind === 'fix' || it.kind === 'write') && !gr.ok && inst.tries >= 2) {
@@ -233,6 +234,12 @@ async function feedbackNode(inst, view, gr, { first = true } = {}) {
   }
   return box;
 }
+
+/* ---------- shared bits for end-of-round screens ---------- */
+const statTile = (ic, hue, label, value) => h('div', { class: 'stat-tile' }, h('span', { class: 'stat-ico ' + hue }, icon(ic)), h('div', null, h('b', null, value), h('span', { class: 'l' }, label)));
+const skillBars = bySkill => h('div', { class: 'skill-rows' }, Object.entries(bySkill).map(([s, v]) => h('div', { class: 'skill-row' }, h('span', null, SKILL_NAMES[s] || s), bar(v.ok / v.t, v.ok / v.t >= .8 ? 'good' : v.ok / v.t < .5 ? 'warn' : '', SKILL_NAMES[s] || s), h('b', null, `${v.ok}/${v.t}`))));
+const levelLine = () => { const li = levelInfo(Store.data.xp); return `Level ${li.n}: ${li.name}` + (li.next ? ` · ${li.next - Store.data.xp} XP to ${li.nextName}` : ' · top level!'); };
+const badgeShelf = list => list.length ? h('div', { class: 'new-badges' }, h('b', null, list.length > 1 ? 'New badges!' : 'New badge!'), list.map(b => h('div', { class: 'medal-wrap earned' }, Medal({ ...b, earned: true }, 64), h('span', null, b.name)))) : null;
 
 /* ---------- practice session ---------- */
 function xpFor(it, first) { const base = (it.kind === 'fix' || it.kind === 'write') ? 20 : 10; return first ? base : Math.round(base / 2); }
@@ -251,16 +258,16 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
   function header() {
     topbar.textContent = '';
     const done = Math.min(idx, queue.length);
-    topbar.append(h('a', { class: 'back', href: backHref }, '← ' + backLabel), h('h1', { class: 'sess-title' }, title),
-      h('div', { class: 'sess-stats' }, h('span', { class: 'stat streak' + (streak >= 3 ? ' hot' : ''), title: 'Right in a row' }, '🔥 ' + streak), h('span', { class: 'stat' }, '⭐ ' + xp)),
-      h('div', { class: 'sess-prog' }, bar(done / queue.length), h('span', null, `${Math.min(done + 1, queue.length)} / ${queue.length}`)));
+    topbar.append(h('a', { class: 'back', href: backHref }, icon('back'), backLabel), h('h1', { class: 'sess-title' }, title),
+      h('div', { class: 'sess-stats' }, h('span', { class: 'stat streak' + (streak >= 3 ? ' hot' : ''), title: 'Right in a row' }, icon('flame'), String(streak), h('span', { class: 'sr-only' }, ' in a row')), h('span', { class: 'stat xpstat', title: 'XP this round' }, icon('star', 'xpi'), String(xp), h('span', { class: 'sr-only' }, ' XP'))),
+      h('div', { class: 'sess-prog' }, bar(done / queue.length, '', 'Round progress'), h('span', null, `${Math.min(done + 1, queue.length)} / ${queue.length}`)));
   }
   function showNext() {
     header(); stage.textContent = '';
     if (idx >= queue.length) return finish();
     const inst = queue[idx]; const view = QView(inst, { mode: 'practice', onChange: updateBtn });
     const check = h('button', { type: 'button', class: 'btn primary big', disabled: true, onclick: submit }, 'Check answer');
-    const next = h('button', { type: 'button', class: 'btn primary big', onclick: () => { idx++; showNext(); window.scrollTo({ top: 0, behavior: 'smooth' }); } }, idx + 1 >= queue.length ? 'See results →' : 'Next →');
+    const next = h('button', { type: 'button', class: 'btn primary big', onclick: () => { idx++; showNext(); window.scrollTo({ top: 0, behavior: 'smooth' }); } }, idx + 1 >= queue.length ? ['See results', icon('arrow')] : ['Next', icon('arrow')]);
     const fbSlot = h('div', { class: 'fb-slot' });
     const actions = h('div', { class: 'q-actions' }, check);
     const card = h('div', { class: 'card q-card' }, view.el, fbSlot, actions);
@@ -276,7 +283,7 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
       const first = inst.tries === 1 && !retried.has(inst.item.id);
       const isCode = inst.item.kind === 'fix' || inst.item.kind === 'write';
       if (isCode && !gr.ok && inst.tries < 3) {   // coding tasks: let them try again before revealing
-        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, gr, { first }));
+        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, gr, { first, streak }));
         check.disabled = false; check.textContent = 'Check again';
         if (inst.tries >= 2) actions.append(h('button', { type: 'button', class: 'btn ghost', onclick: () => finishItem(gr, true) }, 'Skip & show answer'));
         hintsUI(inst, view, actions);
@@ -285,14 +292,15 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
       await finishItem(gr, false);
       async function finishItem(g, skipped) {
         inst.done = true; inst.ok = g.ok; view.lock();
-        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, g, { first }));
+        fbSlot.textContent = ''; fbSlot.append(await feedbackNode(inst, view, g, { first, streak: g.ok ? streak + 1 : 0 }));
         if (first || !results.find(r => r.id === inst.item.id)) {
           results.push({ id: inst.item.id, ok: g.ok && first, item: inst.item });
         }
         Store.record(inst.item.id, g.ok);
-        if (g.ok) { streak++; bestStreak = Math.max(bestStreak, streak); const gain = xpFor(inst.item, first); xp += gain; Store.addXp(gain); } else streak = 0;
+        let gainNow = 0;
+        if (g.ok) { streak++; bestStreak = Math.max(bestStreak, streak); gainNow = xpFor(inst.item, first); xp += gainNow; Store.addXp(gainNow); if (bestStreak > Store.data.bestStreak) { Store.data.bestStreak = bestStreak; Store.save(); } } else streak = 0;
         if (!g.ok && !retried.has(inst.item.id)) { retried.add(inst.item.id); queue.push(makeInst(inst.item)); }   // fresh instance comes back at the end
-        actions.textContent = ''; actions.append(next); next.focus(); header();
+        actions.textContent = ''; actions.append(next); next.focus(); header(); if (gainNow) floatXP(gainNow, $('.xpstat', topbar)); collectBadges();
         sessionCtl = { ...sessionCtl, done: true };
       }
     }
@@ -307,10 +315,12 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
     const btn = h('button', { type: 'button', class: 'btn ghost small', onclick: () => {
       if (inst.hints < it.hints.length) { slot.append(h('div', { class: 'hint' }, h('b', null, 'Hint ' + (inst.hints + 1) + ': '), it.hints[inst.hints])); inst.hints++; }
       if (inst.hints >= it.hints.length) btn.disabled = true;
-    } }, '💡 Give me a hint');
+    } }, icon('bulb'), 'Give me a hint');
     slot.prepend(btn);
   }
   let sessionCtl = null;
+  const earned = [];
+  function collectBadges() { const f = newBadges(); f.forEach(b => earned.push(b)); announceBadges(f); }
   function finish() {
     header(); stage.textContent = '';
     const firstTry = results.filter(r => r.ok).length;
@@ -320,18 +330,20 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
     const bySkill = {};
     for (const r of results) { const s = r.item.skill; bySkill[s] = bySkill[s] || { t: 0, ok: 0 }; bySkill[s].t++; if (r.ok) bySkill[s].ok++; }
     const frac = n ? firstTry / n : 0;
-    const msg = frac >= 0.9 ? 'Outstanding! 🚀' : frac >= 0.75 ? 'Great work! 💪' : frac >= 0.5 ? 'Getting there - the misses are your gold. 🔍' : 'Good start. Read the lesson again, then retry. 📘';
+    const msg = frac >= 0.9 ? 'Outstanding!' : frac >= 0.75 ? 'Great work!' : frac >= 0.5 ? 'Getting there. The misses are your gold.' : 'Good start. Let us look at the misses together.';
     const missed = results.filter(r => !r.ok).map(r => r.item);
+    newBadges().forEach(b => earned.push(b));
     const card = h('div', { class: 'card summary' },
-      h('div', { class: 'sum-top' }, ring(frac, 140, 'first try'), h('div', null, h('h2', null, msg), h('p', { class: 'muted' }, `${firstTry} of ${n} right on the first try. Best streak: ${bestStreak} 🔥. XP earned: ${xp} ⭐`))),
-      h('h3', null, 'By skill'),
-      h('div', { class: 'skill-rows' }, Object.entries(bySkill).map(([s, v]) => h('div', { class: 'skill-row' }, h('span', null, SKILL_NAMES[s] || s), bar(v.ok / v.t), h('b', null, `${v.ok}/${v.t}`)))),
-      missed.length ? h('div', { class: 'missed' }, h('h3', null, 'Ones to look at again'), missed.map(it => h('div', { class: 'missed-item' }, h('span', { class: 'chip' }, KIND_LABEL[it.kind]), h('code', null, (it.code || it.expr || it.prompt || it.q || '').split('\n')[0].slice(0, 60))))) : h('p', { class: 'good-line' }, '🎯 Perfect round. Try a harder mix or the mock test!'),
+      h('div', { class: 'sum-top' }, Pip(frac >= .75 ? 'cheer' : frac >= .5 ? 'happy' : 'think', 130), h('h2', null, msg), h('p', { class: 'muted' }, levelLine())),
+      h('div', { class: 'sum-score' }, statTile('check', 'mint', 'Right first try', `${firstTry} / ${n}`), statTile('flame', 'coral', 'Best streak', String(bestStreak)), statTile('star', 'sun', 'XP earned', '+' + xp)),
+      badgeShelf(earned),
+      h('h3', null, 'By skill'), skillBars(bySkill),
+      missed.length ? h('div', { class: 'missed' }, h('h3', null, 'Ones to look at again'), missed.map(it => h('div', { class: 'missed-item' }, h('span', { class: 'chip' }, KIND_LABEL[it.kind]), h('code', null, (it.code || it.expr || it.prompt || it.q || '').split('\n')[0].slice(0, 60))))) : h('p', { class: 'good-line' }, 'Perfect round! Try a harder mix or the mock test.'),
       h('div', { class: 'sum-actions' },
-        missed.length ? h('button', { type: 'button', class: 'btn primary', onclick: () => startItems('Retry my misses', missed, { kind: 'retry' }) }, `Retry ${missed.length} missed`) : null,
-        h('a', { class: 'btn', href: backHref }, '← ' + backLabel),
+        missed.length ? h('button', { type: 'button', class: 'btn primary', onclick: () => startItems('Retry my misses', missed, { kind: 'retry' }) }, icon('reset'), `Retry ${missed.length} missed`) : null,
+        h('a', { class: 'btn', href: backHref }, icon('back'), backLabel),
         h('a', { class: 'btn ghost', href: '#/' }, 'Home')));
-    stage.append(card);
+    stage.append(card); if (frac >= .75 && n >= 5) confetti();
     onFinish && onFinish(sess);
   }
   // keyboard: 1-9 pick, Enter = check/next
@@ -354,7 +366,7 @@ function PracticeSession({ title, items, backHref = '#/practice', backLabel = 'P
   return root;
 }
 function startItems(title, items, meta) {
-  const view = $('#view'); view.textContent = '';
+  const view = $('#view'); view.textContent = ''; document.body.classList.add('in-session');
   view.append(PracticeSession({ title, items, meta, backHref: '#/practice', backLabel: 'Practice' }));
   window.scrollTo(0, 0);
 }
@@ -413,20 +425,21 @@ function MockTest({ n = 20, minutes = 30, track = 'test' }) {
   const root = h('div', { class: 'session mock' });
   const total = insts.length; let cur = 0; const flagged = new Set(); let secs = minutes * 60, timerOn = true, startTs = Date.now(), finished = false;
   const views = insts.map(i => QView(i, { mode: 'test', onChange: () => { renderNav(); } }));
-  const timerEl = h('span', { class: 'timer', role: 'timer', 'aria-label': 'time left' });
+  const timeTxt = h('span', null, ''); const timerEl = h('span', { class: 'timer', role: 'timer', 'aria-label': 'time left' }, icon('clock'), timeTxt);
   const navEl = h('div', { class: 'mock-nav', role: 'navigation', 'aria-label': 'Questions' });
   const stage = h('div', { class: 'sess-stage' });
-  const pauseBtn = h('button', { type: 'button', class: 'btn ghost small', onclick: () => { timerOn = !timerOn; pauseBtn.textContent = timerOn ? '⏸ Pause' : '▶ Resume'; stage.classList.toggle('paused', !timerOn); } }, '⏸ Pause');
-  const top = h('div', { class: 'sess-top' }, h('a', { class: 'back', href: track === 'level' ? '#/level' : '#/test', onclick: e => { if (!finished && !confirm('Leave the test? Your answers will be lost.')) e.preventDefault(); } }, '← Leave'),
+  const pauseLab = h('span', null, 'Pause');
+  const pauseBtn = h('button', { type: 'button', class: 'btn ghost small', onclick: () => { timerOn = !timerOn; pauseLab.textContent = timerOn ? 'Pause' : 'Resume'; pauseBtn.firstChild.replaceWith(icon(timerOn ? 'pause' : 'play')); stage.classList.toggle('paused', !timerOn); } }, icon('pause'), pauseLab);
+  const top = h('div', { class: 'sess-top' }, h('a', { class: 'back', href: track === 'level' ? '#/level' : '#/test', onclick: e => { if (!finished && !confirm('Leave the test? Your answers will be lost.')) e.preventDefault(); } }, icon('back'), 'Leave'),
     h('h1', { class: 'sess-title' }, `${track === 'level' ? 'Level Up checkpoint' : 'Mock test'} · ${total} questions`), h('div', { class: 'sess-stats' }, timerEl, pauseBtn));
   root.append(top, navEl, stage);
   const fmt = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
   const tick = setInterval(() => {
     if (!root.isConnected || finished) { clearInterval(tick); return; }
-    if (timerOn) secs--; timerEl.textContent = '⏱ ' + fmt(Math.max(0, secs)); timerEl.classList.toggle('low', secs < 300);
+    if (timerOn) secs--; timeTxt.textContent = fmt(Math.max(0, secs)); timerEl.classList.toggle('low', secs < 300);
     if (secs <= 0) { clearInterval(tick); toast('Time is up! Grading…'); finish(true); }
   }, 1000);
-  timerEl.textContent = '⏱ ' + fmt(secs);
+  timeTxt.textContent = fmt(secs);
 
   function renderNav() {
     navEl.textContent = '';
@@ -438,10 +451,11 @@ function MockTest({ n = 20, minutes = 30, track = 'test' }) {
   function go(i) {
     cur = i; stage.textContent = ''; renderNav();
     const view = views[i]; const inst = insts[i];
-    const flag = h('button', { type: 'button', class: 'btn ghost small', onclick: () => { flagged.has(i) ? flagged.delete(i) : flagged.add(i); flag.textContent = flagged.has(i) ? '🚩 Flagged' : '🏳 Flag for review'; renderNav(); } }, flagged.has(i) ? '🚩 Flagged' : '🏳 Flag for review');
-    const prev = h('button', { type: 'button', class: 'btn', disabled: i === 0, onclick: () => go(i - 1) }, '← Back');
-    const nxt = i === total - 1 ? h('button', { type: 'button', class: 'btn primary', onclick: () => review() }, 'Review & finish') : h('button', { type: 'button', class: 'btn primary', onclick: () => go(i + 1) }, 'Next →');
-    const note = ['fix', 'write'].includes(inst.item.kind) ? h('p', { class: 'muted small' }, 'Use ▶ Run to test your code with your own inputs. It will be graded with hidden tests at the end.') : null;
+    const flagLab = h('span', null, flagged.has(i) ? 'Flagged' : 'Flag for review');
+    const flag = h('button', { type: 'button', class: 'btn ghost small', 'aria-pressed': flagged.has(i) ? 'true' : 'false', onclick: () => { flagged.has(i) ? flagged.delete(i) : flagged.add(i); flagLab.textContent = flagged.has(i) ? 'Flagged' : 'Flag for review'; flag.setAttribute('aria-pressed', flagged.has(i)); renderNav(); } }, icon('flag'), flagLab);
+    const prev = h('button', { type: 'button', class: 'btn', disabled: i === 0, onclick: () => go(i - 1) }, icon('back'), 'Back');
+    const nxt = i === total - 1 ? h('button', { type: 'button', class: 'btn primary', onclick: () => review() }, 'Review & finish') : h('button', { type: 'button', class: 'btn primary', onclick: () => go(i + 1) }, 'Next', icon('arrow'));
+    const note = ['fix', 'write'].includes(inst.item.kind) ? h('p', { class: 'muted small' }, 'Use Run to test your code with your own inputs. It will be graded with hidden tests at the end.') : null;
     stage.append(h('div', { class: 'card q-card' }, h('div', { class: 'qnum' }, `Question ${i + 1} of ${total}`), view.el, note, h('div', { class: 'q-actions between' }, prev, flag, nxt)));
     window.scrollTo({ top: 0 });
   }
@@ -449,7 +463,7 @@ function MockTest({ n = 20, minutes = 30, track = 'test' }) {
     stage.textContent = '';
     const un = insts.map((_, i) => i).filter(i => !(views[i].answered && views[i].answered()));
     stage.append(h('div', { class: 'card' }, h('h2', null, 'Ready to hand it in?'),
-      un.length ? h('p', null, `You have not answered: ${un.map(i => 'Q' + (i + 1)).join(', ')}.`) : h('p', null, 'You answered every question. 🎉'),
+      un.length ? h('p', null, `You have not answered: ${un.map(i => 'Q' + (i + 1)).join(', ')}.`) : h('p', null, 'You answered every question. Nice!'),
       flagged.size ? h('p', null, `Flagged: ${[...flagged].map(i => 'Q' + (i + 1)).join(', ')}.`) : null,
       h('div', { class: 'q-actions between' }, h('button', { type: 'button', class: 'btn', onclick: () => go(un[0] != null ? un[0] : 0) }, 'Go back and check'), h('button', { type: 'button', class: 'btn primary big', onclick: () => finish(false) }, 'Hand it in'))));
   }
@@ -471,11 +485,12 @@ function MockTest({ n = 20, minutes = 30, track = 'test' }) {
     Store.data.mocks.push({ ts: Date.now(), score: right, total, secs: used, track }); Store.save(); Store.addXp(right * 5);
     const frac = right / total;
     const missed = graded.filter(g => !g.gr.ok).map(g => g.inst.item);
-    const verdict = frac >= 0.9 ? 'Test-ready! 🏆' : frac >= 0.75 ? 'Strong. A little polish and you are there. 💪' : frac >= 0.6 ? 'Solid base. Fix the misses below. 🔧' : 'Keep going - every miss below teaches you something. 📘';
+    const verdict = frac >= 0.9 ? 'Test-ready!' : frac >= 0.75 ? 'Strong. A little polish and you are there.' : frac >= 0.6 ? 'Solid base. Fix the misses below.' : 'Keep going. Every miss below teaches you something.';
+    const fresh = newBadges();
     const rev = h('div', { class: 'review-list' });
     for (let i = 0; i < graded.length; i++) {
       const { inst, view, gr } = graded[i]; const it = inst.item;
-      const d = h('details', { class: 'rev ' + (gr.ok ? 'ok' : 'no'), open: !gr.ok }, h('summary', null, h('span', { class: 'rev-n' }, (gr.ok ? '✔ ' : gr.skipped ? '— ' : '✘ ') + 'Q' + (i + 1)), h('span', { class: 'chip' }, KIND_LABEL[it.kind]), h('span', { class: 'rev-t' }, (it.code || it.expr || it.prompt || it.q || '').split('\n')[0].slice(0, 70))));
+      const d = h('details', { class: 'rev ' + (gr.ok ? 'ok' : 'no'), open: !gr.ok }, h('summary', null, h('span', { class: 'rev-n' }, gr.ok ? icon('check') : gr.skipped ? '—' : icon('x'), ' Q' + (i + 1)), h('span', { class: 'chip' }, KIND_LABEL[it.kind]), h('span', { class: 'rev-t' }, (it.code || it.expr || it.prompt || it.q || '').split('\n')[0].slice(0, 70))));
       const body = h('div', { class: 'rev-body' });
       if (it.code) body.append(codeBlock(it.code));
       if (it.kind === 'ty') body.append(codeBlock((it.setup ? it.setup + '\n' : '') + 'result = ' + it.expr));
@@ -492,13 +507,14 @@ function MockTest({ n = 20, minutes = 30, track = 'test' }) {
     }
     stage.textContent = '';
     stage.append(h('div', { class: 'card summary' },
-      h('div', { class: 'sum-top' }, ring(frac, 150, 'score'), h('div', null, h('h2', null, verdict), h('p', { class: 'muted' }, `${right} of ${total} correct · time used ${fmt(used)}${timeUp ? ' (time ran out)' : ''}`))),
-      h('h3', null, 'By skill'),
-      h('div', { class: 'skill-rows' }, Object.entries(bySkill).map(([s, v]) => h('div', { class: 'skill-row' }, h('span', null, SKILL_NAMES[s] || s), bar(v.ok / v.t, v.ok / v.t < .6 ? 'warn' : ''), h('b', null, `${v.ok}/${v.t}`)))),
+      h('div', { class: 'sum-top' }, Pip(frac >= .75 ? 'cheer' : frac >= .6 ? 'happy' : 'think', 130), h('h2', null, verdict), h('p', { class: 'muted' }, levelLine() + (timeUp ? ' · time ran out' : ''))),
+      h('div', { class: 'sum-score' }, statTile('check', 'mint', 'Correct', `${right} / ${total}`), statTile('trophy', 'violet', 'Score', pct(frac) + '%'), statTile('clock', 'sun', 'Time used', fmt(used))),
+      badgeShelf(fresh),
+      h('h3', null, 'By skill'), skillBars(bySkill),
       h('div', { class: 'sum-actions' }, missed.length ? h('button', { type: 'button', class: 'btn primary', onclick: () => startItems('Fix my test misses', missed, { kind: 'retry' }) }, `Practice the ${missed.length} I missed`) : null,
         h('a', { class: 'btn', href: track === 'level' ? '#/level' : '#/test' }, 'Another test'), h('a', { class: 'btn ghost', href: '#/' }, 'Home'))),
       h('h3', { class: 'rev-h' }, 'Question by question'), rev);
-    window.scrollTo({ top: 0 });
+    window.scrollTo({ top: 0 }); if (frac >= .8) confetti();
   }
   go(0);
   return root;

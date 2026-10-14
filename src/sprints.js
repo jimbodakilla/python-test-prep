@@ -54,17 +54,18 @@ async function TypeSprint() {
   const batch = []; for (let i = 0; i < 70; i++) batch.push(await genTypeQuestion());
   let idx = 0, score = 0, tried = 0, streak = 0, best = 0, secs = 60, over = false, locked = false;
   const missed = [];
-  const timerEl = h('span', { class: 'timer' }, '⏱ 60'), scoreEl = h('span', { class: 'stat' }, '✅ 0'), streakEl = h('span', { class: 'stat' }, '🔥 0');
+  const timeTxt = h('span', null, '60'), scoreTxt = h('span', null, '0'), streakTxt = h('span', null, '0');
+  const timerEl = h('span', { class: 'timer', role: 'timer' }, icon('clock'), timeTxt, h('span', { class: 'sr-only' }, ' seconds left')), scoreEl = h('span', { class: 'stat' }, icon('check'), scoreTxt, h('span', { class: 'sr-only' }, ' correct')), streakEl = h('span', { class: 'stat streak' }, icon('flame'), streakTxt, h('span', { class: 'sr-only' }, ' in a row'));
   const stage = h('div', { class: 'sess-stage' });
-  root.append(h('div', { class: 'sess-top' }, h('a', { class: 'back', href: '#/practice' }, '← Practice'), h('h1', { class: 'sess-title' }, 'Type Sprint · 60 seconds'), h('div', { class: 'sess-stats' }, scoreEl, streakEl, timerEl)), stage);
-  const intro = h('div', { class: 'card center' }, h('h2', null, '⚡ Type Sprint'), h('p', null, 'You get an expression. Tap what TYPE it gives: ', typeBadge('int'), ' ', typeBadge('float'), ' ', typeBadge('str'), ' or 💥 Error.'),
+  root.append(h('div', { class: 'sess-top' }, h('a', { class: 'back', href: '#/practice' }, icon('back'), 'Practice'), h('h1', { class: 'sess-title' }, 'Type Sprint · 60 seconds'), h('div', { class: 'sess-stats' }, scoreEl, streakEl, timerEl)), stage);
+  const intro = h('div', { class: 'card center' }, Pip('happy', 110), h('h2', null, 'Type Sprint'), h('p', null, 'You get an expression. Tap what TYPE it gives: ', typeBadge('int'), ' ', typeBadge('float'), ' ', typeBadge('str'), ' or ', typeBadge('err'), '.'),
     h('p', { class: 'muted' }, 'Keys 1-4 work. Wrong answers show why. How many can you get in 60 seconds?'),
     Store.data.best.type ? h('p', null, 'Your best: ', h('b', null, Store.data.best.type)) : null,
-    h('button', { type: 'button', class: 'btn primary big', onclick: begin }, 'Start the clock'));
+    h('button', { type: 'button', class: 'btn primary big', onclick: begin }, icon('bolt'), 'Start the clock'));
   stage.append(intro);
   let tick;
   function begin() {
-    tick = setInterval(() => { if (!root.isConnected) { clearInterval(tick); return; } secs--; timerEl.textContent = '⏱ ' + secs; timerEl.classList.toggle('low', secs <= 10); if (secs <= 0) end(); }, 1000);
+    tick = setInterval(() => { if (!root.isConnected) { clearInterval(tick); return; } secs--; timeTxt.textContent = String(secs); timerEl.classList.toggle('low', secs <= 10); if (secs <= 0) end(); }, 1000);
     document.addEventListener('keydown', key); show();
   }
   function key(e) { if (!root.isConnected) { document.removeEventListener('keydown', key); return; } if (over || locked) return; const i = '1234'.indexOf(e.key); if (i >= 0) answer(TYPE_OPTS[i]); }
@@ -73,16 +74,16 @@ async function TypeSprint() {
     const q = batch[idx % batch.length];
     const code = (q.setup ? q.setup + '\n' : '') + 'result = ' + q.expr;
     const fb = h('div', { class: 'sprint-fb', 'aria-live': 'polite' });
-    const opts = h('div', { class: 'opts opts-ty' }, TYPE_OPTS.map((t, i) => h('button', { type: 'button', class: 'opt ty-' + t, onclick: () => answer(t) }, h('span', { class: 'opt-n' }, String(i + 1)), h('span', { class: 'opt-t' }, t === 'Error' ? '💥 Error' : t))));
+    const opts = h('div', { class: 'opts opts-ty' }, TYPE_OPTS.map((t, i) => h('button', { type: 'button', class: 'opt ty-' + t, onclick: () => answer(t) }, h('span', { class: 'opt-n' }, String(i + 1)), h('span', { class: 'opt-t' }, t === 'Error' ? [icon('warn'), ' Error'] : t))));
     stage.append(h('div', { class: 'card q-card' }, h('div', { class: 'q-prompt' }, 'What type is result?'), codeBlock(code), stdinNote(q.stdin), opts, fb));
     show.fb = fb; show.opts = opts;
   }
   async function answer(t) {
     if (locked || over) return; locked = true; const q = batch[idx % batch.length]; tried++;
     const ok = t === q.answer;
-    $$('button', show.opts).forEach(b => { b.disabled = true; const bt = b.querySelector('.opt-t').textContent.replace('💥 ', ''); b.classList.add(bt === q.answer ? 'good' : (bt === t ? 'bad' : 'dim')); });
-    if (ok) { score++; streak++; best = Math.max(best, streak); show.fb.textContent = '✔ ' + (streak >= 5 ? 'On fire!' : 'Yes'); scoreEl.textContent = '✅ ' + score; streakEl.textContent = '🔥 ' + streak; }
-    else { streak = 0; streakEl.textContent = '🔥 0'; missed.push(q); show.fb.innerHTML = '✘ It is <b>' + esc(q.answer) + '</b>. ' + esc(q.why); }
+    $$('button', show.opts).forEach(b => { b.disabled = true; const bt = b.querySelector('.opt-t').textContent.trim(); b.classList.add(bt === q.answer ? 'good' : (bt === t ? 'bad' : 'dim')); });
+    if (ok) { score++; streak++; best = Math.max(best, streak); show.fb.textContent = streak >= 5 ? 'On fire!' : 'Yes!'; scoreTxt.textContent = String(score); streakTxt.textContent = String(streak); streakEl.classList.toggle('hot', streak >= 3); }
+    else { streak = 0; streakTxt.textContent = '0'; streakEl.classList.remove('hot'); missed.push(q); show.fb.innerHTML = 'It is <b>' + esc(q.answer) + '</b>. ' + esc(q.why); }
     idx++; setTimeout(() => { if (!over && root.isConnected) show(); }, ok ? 450 : 1900);
   }
   function end() {
@@ -90,10 +91,12 @@ async function TypeSprint() {
     const prevBest = Store.data.best.type || 0; const isBest = score > prevBest; if (isBest) Store.data.best.type = score; Store.addXp(score * 2);
     stage.textContent = '';
     const uniq = []; for (const m of missed) if (!uniq.find(x => x.expr === m.expr)) uniq.push(m);
-    stage.append(h('div', { class: 'card summary' }, h('div', { class: 'sum-top' }, ring(tried ? score / tried : 0, 130, 'accuracy'), h('div', null, h('h2', null, `${score} correct in 60 seconds`), h('p', { class: 'muted' }, `${tried} answered · best streak ${best} 🔥${isBest ? ' · 🎉 NEW BEST!' : ''}`))),
+    stage.append(h('div', { class: 'card summary' }, h('div', { class: 'sum-top' }, Pip(score >= 12 ? 'cheer' : 'happy', 120), h('h2', null, `${score} correct in 60 seconds`), h('p', { class: 'muted' }, `${tried} answered · best streak ${best}${isBest ? ' · New personal best!' : ''}`)),
+      h('div', { class: 'sum-score' }, statTile('check', 'mint', 'Correct', String(score)), statTile('flame', 'coral', 'Best streak', String(best)), statTile('star', 'sun', 'XP earned', '+' + score * 2)),
       uniq.length ? h('div', null, h('h3', null, 'Review your misses'), uniq.slice(0, 8).map(m => h('div', { class: 'missed-item col' }, codeBlock((m.setup ? m.setup + '\n' : '') + 'result = ' + m.expr, { compact: true }), h('div', null, h('b', null, 'Answer: '), typeBadge(m.answer === 'Error' ? 'err' : m.answer), ' ', m.why)))) : null,
-      h('div', { class: 'sum-actions' }, h('a', { class: 'btn primary', href: '#/sprint/type', onclick: () => setTimeout(route, 0) }, 'Play again'), h('a', { class: 'btn', href: '#/practice' }, '← Practice'))));
+      h('div', { class: 'sum-actions' }, h('a', { class: 'btn primary', href: '#/sprint/type', onclick: () => setTimeout(route, 0) }, 'Play again'), h('a', { class: 'btn', href: '#/practice' }, icon('back'), 'Practice'))));
     Store.data.sessions.push({ ts: Date.now(), kind: 'type', score, total: tried }); Store.save();
+    if (isBest && score >= 8) confetti(); announceBadges(newBadges());
   }
   return root;
 }

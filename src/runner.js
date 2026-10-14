@@ -9,7 +9,7 @@ function Editor({ code = '', readonly = false, minLines = 3, label = 'Python cod
   const gut = h('div', { class: 'ed-gutter', 'aria-hidden': 'true' });
   const inner = h('div', { class: 'ed-inner' }, pre, ta);
   const scroller = h('div', { class: 'ed-scroll' }, inner);
-  const root = h('div', { class: 'editor' + (readonly ? ' ro' : '') }, h('div', { class: 'ed-body' }, gut, scroller));
+  const root = h('div', { class: 'editor' + (readonly ? ' ro' : '') }, h('div', { class: 'ed-title' }, icon('code'), 'main.py', h('span', { class: 'dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))), h('div', { class: 'ed-body' }, gut, scroller));
   const state = { err: 0, cur: 0 };
   function sync() {
     const v = ta.value.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
@@ -155,14 +155,16 @@ function Playground({ code = '', stdin = [], note = '', minLines = 3, showVars =
   const original = code; let suggestions = stdin.slice();
   let ctl = null;
   const status = h('div', { class: 'run-status', role: 'status' });
-  const btnRun = h('button', { type: 'button', class: 'btn primary', onclick: () => start('run') }, '▶ Run');
-  const btnStep = h('button', { type: 'button', class: 'btn', onclick: () => stepClick(), title: 'Run one line at a time and watch the variables' }, '⏭ Step');
-  const btnStop = h('button', { type: 'button', class: 'btn ghost', onclick: () => stop(false), disabled: true }, '⏹ Stop');
-  const btnReset = h('button', { type: 'button', class: 'btn ghost', onclick: () => { stop(true); ed.value = original; term.placeholder(); vars && vars.reset(); status.textContent = ''; explain.textContent = ''; } }, '↺ Reset');
+  const lab = (ic, t) => [icon(ic), h('span', null, t)];
+  const setLabel = (b, t) => { const s = $('span', b); if (s) s.textContent = t; };
+  const btnRun = h('button', { type: 'button', class: 'btn primary run', onclick: () => start('run') }, lab('play', 'Run'));
+  const btnStep = h('button', { type: 'button', class: 'btn', onclick: () => stepClick(), title: 'Run one line at a time and watch the variables' }, lab('step', 'Step'));
+  const btnStop = h('button', { type: 'button', class: 'btn ghost', onclick: () => stop(false), disabled: true }, lab('stop', 'Stop'));
+  const btnReset = h('button', { type: 'button', class: 'btn ghost', onclick: () => { stop(true); ed.value = original; term.placeholder(); vars && vars.reset(); status.textContent = ''; explain.textContent = ''; } }, lab('reset', 'Reset'));
   const explain = h('div', { class: 'explain', 'aria-live': 'polite' });
   const tools = h('div', { class: 'toolbar' }, btnRun, btnStep, btnStop, !readonly && original !== '' ? btnReset : null, status);
   const left = h('div', { class: 'pg-left' }, ed.el, tools);
-  const right = h('div', { class: 'pg-right' }, term.el, vars && vars.el);
+  const right = h('div', { class: 'pg-right' }, h('div', { class: 'pane' }, h('div', { class: 'pane-h' }, icon('term'), 'Output'), term.el), vars && vars.el);
   const root = h('div', { class: 'playground' + (compact ? ' compact' : ''), dataset: { pg: id || '' } }, note ? h('p', { class: 'pg-note', html: note }) : null, h('div', { class: 'pg-grid' }, left, right), explain);
   root.addEventListener('runkey', () => start('run'));
 
@@ -184,8 +186,8 @@ function Playground({ code = '', stdin = [], note = '', minLines = 3, showVars =
     stop(true);
     const my = ctl = { mode, stopped: false, wait: null };
     term.clear(); explain.textContent = ''; explain.className = 'explain'; ed.markError(0); ed.markCurrent(0); status.textContent = mode === 'step' ? 'Stepping - press Step ⏭ for the next line' : '';
-    suggestions = stdin.slice(); setRunning(true);
-    btnStep.textContent = '⏭ Next line';
+    suggestions = stdin.slice(); setRunning(true); Store.data.runs = (Store.data.runs || 0) + 1; Store.markDay(); Store.save();
+    setLabel(btnStep, 'Next line');
     const src = ed.value;
     const io = {
       limit: 1500000, shouldStop: () => my.stopped,
@@ -205,16 +207,17 @@ function Playground({ code = '', stdin = [], note = '', minLines = 3, showVars =
     };
     let res;
     try { res = await PF.run(src, io); } catch (e) { res = { ok: false, stopped: true, vars: [] }; }
-    if (my.stopped || res.stopped) { btnStep.textContent = '⏭ Step'; return; }
-    ctl = null; setRunning(false); ed.markCurrent(0); btnStep.textContent = '⏭ Step';
+    if (my.stopped || res.stopped) { setLabel(btnStep, 'Step'); return; }
+    ctl = null; setRunning(false); ed.markCurrent(0); setLabel(btnStep, 'Step');
     vars && vars.show(res.vars);
     if (res.error) {
       ed.markError(res.error.line);
       const ex = term.error(res.error, src, res.vars);
-      status.textContent = (res.error.type === 'TimeLimit' ? '⏱ Stopped: too long' : '💥 Crashed') + ' on line ' + res.error.line;
+      status.textContent = (res.error.type === 'TimeLimit' ? 'Stopped: too long' : 'Crashed') + ' on line ' + res.error.line;
       explain.className = 'explain show';
-      explain.innerHTML = `<div class="ex-h">${res.error.type === 'TimeLimit' ? '⏱ Stuck in a loop?' : '💥 ' + esc(res.error.type === 'NotInCourse' ? 'Not part of this course' : res.error.type)} <span>line ${res.error.line}</span></div><p><b>What it means:</b> ${ex.what}</p><p><b>How to fix it:</b> ${ex.fix}</p>`;
-    } else status.textContent = '✔ Finished with no errors';
+      explain.innerHTML = `<div class="ex-h">${res.error.type === 'TimeLimit' ? 'Stuck in a loop?' : esc(res.error.type === 'NotInCourse' ? 'Not part of this course' : res.error.type)} <span>line ${res.error.line}</span></div><p><b>What it means:</b> ${ex.what}</p><p><b>How to fix it:</b> ${ex.fix}</p>`;
+    } else status.textContent = 'Finished with no errors';
+    if (!res.error) badgeToast();
     root.dispatchEvent(new CustomEvent('pgdone', { bubbles: true, detail: { res } }));
   }
   return { el: root, ed, term, start, stop, getCode: () => ed.value, setCode: v => { ed.value = v; } };

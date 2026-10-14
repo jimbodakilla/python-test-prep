@@ -18,6 +18,14 @@ Both tracks have:
 - A 2-day study plan, skill meters, weak-spot rescue, plain-English error explanations and a printable cheat sheet.
 - Works on phones, tablets and Chromebooks. Single file, works offline. Progress is saved on the device only.
 
+## Design
+A game-like, tactile design system built for 11-12 year olds ("Pip & Daylight"):
+- Original mascot **Pip** (an SVG snake with five moods) who reacts to answers, scores and milestones.
+- Fredoka display type (embedded, SIL OFL, see `src/assets/Fredoka-OFL.txt`), system UI for reading, mono for code; chunky buttons that physically press; one consistent SVG icon set.
+- Levels (11 named ranks), 19 badges, a daily streak, XP and short celebrations. Everything respects `prefers-reduced-motion`.
+- Focus mode on phones (bottom nav hides during a round, the action bar sits at thumb height), light / dark / auto theme.
+- WCAG AA: 0 axe violations in light and dark on every page (`tests/audit_a11y.js`).
+
 ## How the answers are guaranteed correct
 The page runs a small Python interpreter written for this course (`src/interp.js`). It is not trusted blindly:
 - Every answer key is computed by **real CPython** at build time (`build/build.py`), never typed by hand. The build fails if a distractor equals the real answer, a buggy program already passes, or alternate solutions disagree.

@@ -32,6 +32,7 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const pct = x => Math.round(x * 100);
 
 /* ---------- storage (never trust it to exist) ---------- */
+const dayKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const Store = {
   key: 'pyprep.v1', data: null,
   load() {
@@ -41,7 +42,8 @@ const Store = {
     const obj = x => (x && typeof x === 'object' && !Array.isArray(x)) ? x : {}, arr = x => Array.isArray(x) ? x : [];
     d.items = obj(d.items); d.lessons = obj(d.lessons); d.best = obj(d.best); d.visited = obj(d.visited); d.plan = obj(d.plan);
     d.sessions = arr(d.sessions).filter(s => s && typeof s === 'object'); d.mocks = arr(d.mocks).filter(m => m && Number.isFinite(m.total) && m.total > 0);
-    d.xp = Number.isFinite(d.xp) ? d.xp : 0;
+    d.xp = Number.isFinite(d.xp) ? d.xp : 0; d.bestStreak = Number.isFinite(d.bestStreak) ? d.bestStreak : 0; d.runs = Number.isFinite(d.runs) ? d.runs : 0;
+    d.days = arr(d.days).filter(x => typeof x === 'string').slice(-120); d.badgesSeen = obj(d.badgesSeen);
     if (d.theme !== 'light' && d.theme !== 'dark') delete d.theme;
     this.data = d;
   },
@@ -50,9 +52,15 @@ const Store = {
     if (String(id)[0] === 'g') return;            // generated questions are not tracked
     const r = this.data.items[id] || { n: 0, right: 0, ever: false };
     r.n++; if (ok) { r.right++; r.ever = true; } r.last = ok; r.ts = Date.now();
-    this.data.items[id] = r; this.save();
+    this.data.items[id] = r; this.markDay(); this.save();
   },
-  addXp(n) { this.data.xp += n; this.save(); const x = document.getElementById('xp'); if (x) x.textContent = '⭐ ' + this.data.xp; },
+  markDay() { const t = dayKey(new Date()); if (!this.data.days.includes(t)) { this.data.days.push(t); this.data.days = this.data.days.slice(-120); } },
+  addXp(n) {
+    const before = levelInfo(this.data.xp); this.data.xp += n; this.save();
+    if (window.paintChrome) window.paintChrome(true);
+    const after = levelInfo(this.data.xp);
+    if (after.n > before.n) setTimeout(() => celebrate({ title: 'Level ' + after.n + '!', text: 'You are now a ' + after.name + '.', mood: 'cheer', confetti: true }), 900);
+  },
   reset() { this.data = null; try { localStorage.removeItem(this.key); } catch (e) {} this.load(); },
 };
 Store.load();
@@ -279,10 +287,10 @@ function toast(msg) {
 }
 function ring(value, size = 120, label) {
   const r = (size - 14) / 2, c = 2 * Math.PI * r, v = Math.max(0, Math.min(1, value));
-  const col = v >= 0.8 ? 'var(--good)' : v >= 0.5 ? 'var(--warn)' : 'var(--primary)';
+  const col = v >= 0.8 ? 'var(--mint)' : v >= 0.5 ? 'var(--sun)' : 'var(--violet)';
   const wrap = h('div', { class: 'ring', style: `width:${size}px;height:${size}px` });
   wrap.innerHTML = `<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(label || 'progress')} ${pct(v)} percent">
-    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="12"/>
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--surface2)" stroke-width="12"/>
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${col}" stroke-width="12" stroke-linecap="round"
       stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - v)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>
     <div class="ring-n"><b>${pct(v)}%</b><span>${esc(label || '')}</span></div>`;
@@ -290,7 +298,7 @@ function ring(value, size = 120, label) {
 }
 function bar(value, cls = '', label = 'Progress') {
   const v = Math.max(0, Math.min(1, value));
-  return h('div', { class: 'bar ' + cls, role: 'progressbar', 'aria-label': label, 'aria-valuenow': pct(v), 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('i', { style: `width:${pct(v)}%` }));
+  return h('div', { class: 'bar ' + cls, role: 'progressbar', 'aria-label': label, 'aria-valuenow': pct(v), 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('i', { style: `--v:${v}` }));
 }
 
 /* ---------- why does my output differ from the expected output? ---------- */
@@ -310,3 +318,138 @@ function applyTheme() {
   if (t === 'light' || t === 'dark') el.dataset.theme = t; else delete el.dataset.theme;
 }
 applyTheme();
+
+/* =====================================================================
+   GAME LAYER: icons, Pip the mascot, levels, badges, streak, celebrations
+   ===================================================================== */
+const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function icon(name, cls) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('class', 'ico' + (cls ? ' ' + cls : '')); s.setAttribute('aria-hidden', 'true'); s.setAttribute('focusable', 'false');
+  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use'); u.setAttribute('href', '#i-' + name); s.append(u); return s;
+}
+const PIP_SVG = `<svg class="pip" viewBox="0 0 160 160" data-mood="happy" xmlns="http://www.w3.org/2000/svg">
+<g class="pip-all">
+ <path class="pb" d="M30 150c-15 0-21-13-15-25 4-8 14-13 29-13h72c15 0 25 5 29 13 6 12 0 25-15 25z"/>
+ <path class="pbs" d="M140 132c11-2 17-11 14-20" fill="none"/>
+ <ellipse class="ps" cx="50" cy="131" rx="9" ry="6"/><ellipse class="ps" cx="80" cy="133" rx="9" ry="6"/><ellipse class="ps" cx="110" cy="131" rx="9" ry="6"/>
+ <g class="pip-head">
+  <ellipse class="ph" cx="80" cy="72" rx="54" ry="48"/>
+  <path class="pc" d="M42 86c10 24 66 24 76 0 0 20-19 32-38 32S42 106 42 86z"/>
+  <ellipse class="pch" cx="38" cy="88" rx="9" ry="5.500"/><ellipse class="pch" cx="122" cy="88" rx="9" ry="5.500"/>
+  <g data-m="happy think oops sleepless" class="eyes-open">
+   <g class="eye"><circle class="pw" cx="58" cy="64" r="18"/><circle class="pp" cx="61" cy="66" r="9"/><circle class="pg" cx="64" cy="61" r="3.200"/></g>
+   <g class="eye"><circle class="pw" cx="102" cy="64" r="18"/><circle class="pp" cx="99" cy="66" r="9"/><circle class="pg" cx="102" cy="61" r="3.200"/></g>
+  </g>
+  <g data-m="cheer sleep" class="eyes-closed">
+   <path class="pl" d="M42 66q16-18 32 0M86 66q16-18 32 0" fill="none"/>
+  </g>
+  <g data-m="sleep"><path class="pl" d="M42 62q16 14 32 0M86 62q16 14 32 0" fill="none"/></g>
+  <g data-m="oops"><path class="pl" d="M40 40l26 8M120 40l-26 8" fill="none"/></g>
+  <g data-m="happy"><path class="pl" d="M60 88q20 17 40 0" fill="none"/><path class="pt" d="M80 100v9m0 0l-4 5m4-5l4 5" fill="none"/></g>
+  <g data-m="cheer"><path class="pm" d="M58 85q22 32 44 0z"/><path class="ptg" d="M68 100q12 9 24 0q-5-9-12-9t-12 9z"/></g>
+  <g data-m="oops"><path class="pl" d="M64 99q16-12 32 0" fill="none"/></g>
+  <g data-m="think"><path class="pl" d="M68 94h26" fill="none"/></g>
+  <g data-m="sleep"><path class="pl" d="M72 94q8 6 16 0" fill="none"/></g>
+ </g>
+ <g data-m="cheer" class="fx"><path class="sp1" d="M18 36l3 7 7 3-7 3-3 7-3-7-7-3 7-3z"/><path class="sp2" d="M140 26l2.500 6 6 2.500-6 2.500-2.500 6-2.500-6-6-2.500 6-2.500z"/><path class="sp3" d="M148 78l2 4.500 4.500 2-4.500 2-2 4.500-2-4.500-4.500-2 4.500-2z"/></g>
+ <g data-m="oops" class="fx"><path class="drop" d="M128 38c5 8 8 12 8 17a8 8 0 0 1-16 0c0-5 3-9 8-17z"/></g>
+ <g data-m="think" class="fx"><text x="124" y="34" class="qm">?</text></g>
+ <g data-m="sleep" class="fx"><text x="122" y="38" class="qm z">z</text></g>
+</g></svg>`;
+function Pip(mood = 'happy', size = 96, label) {
+  const w = h('span', { class: 'pip-wrap', style: `width:${size}px;height:${size}px` }); w.innerHTML = PIP_SVG;
+  const svg = w.firstElementChild; svg.setAttribute('data-mood', mood);
+  if (label) { w.setAttribute('role', 'img'); w.setAttribute('aria-label', label); } else w.setAttribute('aria-hidden', 'true');
+  w.setMood = m => svg.setAttribute('data-mood', m); return w;
+}
+
+/* ---------- levels ---------- */
+const LEVELS = [[0, 'Code Rookie'], [100, 'Bug Spotter'], [250, 'Output Oracle'], [450, 'Type Tamer'], [700, 'Error Hunter'], [1000, 'Program Builder'], [1400, 'Python Pro'],
+  [1900, 'Loop Ranger'], [2500, 'List Wrangler'], [3200, 'Function Forger'], [4000, 'Code Legend']];
+function levelInfo(xp) {
+  let i = 0; while (i + 1 < LEVELS.length && xp >= LEVELS[i + 1][0]) i++;
+  const cur = LEVELS[i], next = LEVELS[i + 1];
+  return { n: i + 1, name: cur[1], base: cur[0], next: next ? next[0] : null, nextName: next ? next[1] : null, frac: next ? (xp - cur[0]) / (next[0] - cur[0]) : 1 };
+}
+
+/* ---------- daily streak ---------- */
+function dayStreak() {
+  const set = new Set(Store.data.days); const d = new Date(); let n = 0;
+  if (!set.has(dayKey(d))) d.setDate(d.getDate() - 1);
+  while (set.has(dayKey(d))) { n++; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+/* ---------- badges (all derived from saved progress, nothing extra to store) ---------- */
+function solvedCount(kind) { let n = 0; for (const [id, r] of Object.entries(Store.data.items)) { const it = BYID[id]; if (it && (!kind || it.kind === kind) && r.ever) n++; } return n; }
+const unitMastered = u => unitStats(u).mastery >= 0.8;
+const BADGES = [
+  { id: 'first', name: 'First Steps', icon: 'play', hue: 'mint', hint: 'Answer your first question.', test: () => Object.keys(Store.data.items).length > 0 },
+  { id: 'explorer', name: 'Playground Explorer', icon: 'code', hue: 'sky', hint: 'Run code in the playground or a lesson 5 times.', test: () => Store.data.runs >= 5 },
+  { id: 'reader', name: 'Bookworm', icon: 'book', hue: 'violet', hint: 'Read 3 lessons.', test: () => TEST_UNITS.filter(u => lessonDone(u)).length >= 3 },
+  { id: 'scholar', name: 'Scholar', icon: 'medal', hue: 'sun', hint: 'Read all 6 test lessons.', test: () => TEST_UNITS.every(u => lessonDone(u)) },
+  { id: 'century', name: 'Century Club', icon: 'star', hue: 'sun', hint: 'Get 100 answers right.', test: () => Object.values(Store.data.items).reduce((a, r) => a + (r.right || 0), 0) >= 100 },
+  { id: 'perfect', name: 'Perfect Round', icon: 'check', hue: 'mint', hint: 'Get every question right on the first try (8 or more).', test: () => Store.data.sessions.some(s => s.total >= 8 && s.score === s.total) },
+  { id: 'hot', name: 'Hot Streak', icon: 'flame', hue: 'coral', hint: 'Answer 5 in a row.', test: () => Store.data.bestStreak >= 5 },
+  { id: 'speed', name: 'Speed Demon', icon: 'bolt', hue: 'sun', hint: 'Score 15 in a Type Sprint.', test: () => (Store.data.best.type || 0) >= 15 },
+  { id: 'bug', name: 'Bug Squasher', icon: 'bug', hue: 'coral', hint: 'Fix 8 broken programs.', test: () => solvedCount('fix') >= 8 },
+  { id: 'writer', name: 'Code Writer', icon: 'pencil', hue: 'violet', hint: 'Write 5 programs that pass.', test: () => solvedCount('write') >= 5 },
+  { id: 'ready', name: 'Test Ready', icon: 'trophy', hue: 'sun', hint: 'Score 80% or more on a mock test.', test: () => Store.data.mocks.some(m => (m.track || 'test') === 'test' && m.total >= 10 && m.score / m.total >= 0.8) },
+  { id: 'days3', name: '3-Day Streak', icon: 'flame', hue: 'coral', hint: 'Practice on 3 days in a row.', test: () => dayStreak() >= 3 || Store.data.days.length >= 3 && maxDayRun() >= 3 },
+  { id: 'u7', name: 'Text Wizard', icon: 'pencil', hue: 'sky', hint: 'Reach 80% in Level Up 1.', test: () => unitMastered(7) },
+  { id: 'u8', name: 'Decision Maker', icon: 'shuffle', hue: 'violet', hint: 'Reach 80% in Level Up 2: if / else.', test: () => unitMastered(8) },
+  { id: 'u9', name: 'Loop Master', icon: 'loop', hue: 'sky', hint: 'Reach 80% in Level Up 3: loops.', test: () => unitMastered(9) },
+  { id: 'u10', name: 'String Wizard', icon: 'code', hue: 'mint', hint: 'Reach 80% in Level Up 4: strings.', test: () => unitMastered(10) },
+  { id: 'u11', name: 'List Boss', icon: 'sheet', hue: 'pink', hint: 'Reach 80% in Level Up 5: lists.', test: () => unitMastered(11) },
+  { id: 'u12', name: 'Function Hero', icon: 'bolt', hue: 'sun', hint: 'Reach 80% in Level Up 6: functions.', test: () => unitMastered(12) },
+  { id: 'u13', name: 'Project Pro', icon: 'rocket', hue: 'coral', hint: 'Reach 80% in Level Up 7: mini projects.', test: () => unitMastered(13) },
+];
+function maxDayRun() { const ds = [...new Set(Store.data.days)].sort(); let best = 0, run = 0, prev = null; for (const d of ds) { const dt = new Date(d + 'T00:00:00'); if (prev && Math.round((dt - prev) / 86400000) === 1) run++; else run = 1; best = Math.max(best, run); prev = dt; } return best; }
+function badgeStatus() { return BADGES.map(b => ({ ...b, earned: !!b.test() })); }
+function newBadges() {              // earned since last look: mark as seen, return them
+  const fresh = badgeStatus().filter(b => b.earned && !Store.data.badgesSeen[b.id]);
+  if (fresh.length) { fresh.forEach(b => { Store.data.badgesSeen[b.id] = 1; }); Store.save(); }
+  return fresh;
+}
+function Medal(b, size = 64) {
+  const m = h('div', { class: 'medal hue-' + b.hue + (b.earned ? ' earned' : ' locked'), style: `--ms:${size}px`, role: 'img', 'aria-label': b.name + (b.earned ? ' (earned)' : ' (locked): ' + b.hint) }, icon(b.earned ? b.icon : 'lock'));
+  return m;
+}
+
+/* ---------- celebrations (all skipped for reduced motion except the banner text) ---------- */
+function confetti(count = 34) {
+  if (REDUCED) return;
+  const layer = h('div', { class: 'confetti', 'aria-hidden': 'true' }); const hues = ['#FFC933', '#6D3BFF', '#2BD9A0', '#FF5C6C', '#3BA9FF', '#FF8AD0'];
+  for (let i = 0; i < count; i++) {
+    const p = h('i', { style: `left:${10 + Math.random() * 80}%;background:${hues[i % hues.length]};--dx:${(Math.random() - .5) * 360}px;--dy:${-120 - Math.random() * 220}px;--r:${(Math.random() - .5) * 900}deg;animation-delay:${Math.random() * 120}ms;border-radius:${i % 3 ? '2px' : '50%'}` });
+    layer.append(p);
+  }
+  document.body.append(layer); setTimeout(() => layer.remove(), 2200);
+}
+function celebrate({ title, text, mood = 'cheer', confetti: cf = true, ms = 4800 } = {}) {
+  let host = document.getElementById('cele-host'); if (!host) { host = h('div', { id: 'cele-host', 'aria-live': 'polite', role: 'status' }); document.body.append(host); }
+  const card = h('div', { class: 'cele', onclick: () => card.remove() }, Pip(mood, 64), h('div', null, h('b', { class: 'cele-t' }, title), h('span', { class: 'cele-x' }, text || '')));
+  while (host.children.length >= 2) host.firstChild.remove();
+  host.append(card); if (cf) confetti();
+  setTimeout(() => card.classList.add('out'), ms); setTimeout(() => card.remove(), ms + 400);
+}
+function floatXP(n, anchor) {
+  if (REDUCED || !anchor) return;
+  const r = anchor.getBoundingClientRect(); const y = r.top < 90 ? 150 : r.top; const c = h('div', { class: 'xp-float', style: `left:${Math.max(70, r.left + r.width / 2)}px;top:${y}px`, 'aria-hidden': 'true' }, '+' + n + ' XP');
+  document.body.append(c); setTimeout(() => c.remove(), 1300);
+}
+const CHEER_OK = ['Nailed it!', 'Yes!', 'Exactly right!', 'Clean!', 'Boom!', 'You got it!', 'Sharp!'];
+const CHEER_NO = ['Not quite', 'Good try', 'Here is the trick', 'Now you know', 'Learn this one'];
+let cheerI = 0;
+function cheerLine(ok, streak) {
+  if (ok) return streak >= 3 ? streak + ' in a row!' : CHEER_OK[cheerI++ % CHEER_OK.length];
+  return CHEER_NO[cheerI++ % CHEER_NO.length];
+}
+
+function announceBadges(list) {                 // one banner, however many were earned at once
+  if (!list.length) return;
+  if (list.length === 1) celebrate({ title: 'New badge: ' + list[0].name, text: list[0].hint, mood: 'cheer', confetti: true });
+  else celebrate({ title: list.length + ' new badges!', text: list.map(b => b.name).join(', '), mood: 'cheer', confetti: true, ms: 6500 });
+}
+function badgeToast() { announceBadges(newBadges()); }

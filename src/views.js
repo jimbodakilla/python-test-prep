@@ -49,54 +49,97 @@ async function copyText(txt) {
   catch (e) { const ta = h('textarea', { 'aria-label': 'Progress text', style: 'position:fixed;left:-999px' }, txt); document.body.append(ta); ta.select(); try { document.execCommand('copy'); toast('Copied! Paste it into a message.'); } catch (e2) { prompt('Copy this text:', txt); } ta.remove(); }
 }
 
+/* ---------- accent colours per unit (lessons, cards, headers) ---------- */
+const UNIT_HUE = { 1: 'violet', 2: 'sky', 3: 'mint', 4: 'sun', 5: 'coral', 6: 'pink', 7: 'sky', 8: 'violet', 9: 'mint', 10: 'sun', 11: 'pink', 12: 'coral', 13: 'sky' };
+const accStyle = u => { const c = UNIT_HUE[u] || 'violet'; return `--acc:var(--${c});--acc-deep:var(--${c}-deep);--acc-soft:var(--${c}-soft);--acc-ink:var(--${c}-ink)`; };
+const SKILL_COLOR = { print: 'violet', join: 'sky', math: 'mint', input: 'sun-deep', convert: 'coral', types: 'pink', errors: 'coral-deep', programs: 'violet-deep', bonus: 'sky', bool: 'violet', cond: 'sky', loops: 'mint', strings: 'sun-deep', lists: 'pink', funcs: 'coral', project: 'violet-deep' };
+
 /* ---------- HOME ---------- */
+function pipSays(first, ready, nxt) {
+  const st = dayStreak();
+  if (first) return "Hi, I'm Pip! Ready to learn Python?";
+  if (ready >= .8) return "You are nearly test-ready!";
+  if (st >= 2) return `${st} days in a row. Keep it going!`;
+  return 'Pick up where you left off?';
+}
 function HomeView() {
   const st = skillStats(); const ready = overallReadiness(); const plan = PLAN(); const nxt = nextStep();
   const doneCount = plan.flatMap(d => d.tasks).filter(t => t.done()).length, totalTasks = plan.flatMap(d => d.tasks).length;
   const first = !Object.keys(Store.data.items).length && !Object.keys(Store.data.lessons).length;
   const weak = CORE_SKILLS.filter(s => st[s].tried > 0).sort((a, b) => st[a].mastery - st[b].mastery).filter(s => st[s].mastery < .75).slice(0, 3);
+  const li = levelInfo(Store.data.xp), streak = dayStreak();
   const root = h('div', { class: 'home' });
-  root.append(h('section', { class: 'hero card' },
+  root.append(h('section', { class: 'hero' },
     h('div', { class: 'hero-text' },
-      h('p', { class: 'eyebrow' }, 'Python test prep · 6th grade'),
-      h('h1', null, first ? 'Get test-ready in 2 days.' : (ready >= .8 ? 'You are nearly test-ready. 🏆' : 'Keep going. Every question counts.')),
-      h('p', { class: 'lead' }, 'Everything on the test is built from four commands: ', h('code', null, 'print'), ' ', h('code', null, 'input'), ' ', h('code', null, 'int'), ' ', h('code', null, 'float'), '. This site teaches them, then makes you use them until it is automatic.'),
-      h('div', { class: 'hero-cta' }, h('a', { class: 'btn primary big', href: nxt.href }, (first ? 'Start with ' : 'Continue: ') + nxt.label), h('a', { class: 'btn big', href: '#/play' }, 'Open the playground'))),
-    h('div', { class: 'hero-ring' }, ring(ready, 150, 'test-ready'), h('div', { class: 'muted small center' }, `${doneCount}/${totalTasks} plan steps · ⭐ ${Store.data.xp} XP`))));
-  root.append(h('section', { class: 'card' }, h('div', { class: 'sec-h' }, h('h2', null, 'Your skills'), weak.length ? h('a', { class: 'btn small primary', href: '#/weak' }, '🎯 Fix my weak spots') : h('a', { class: 'btn small', href: '#/weak' }, 'Weak-spot practice')),
-    h('p', { class: 'muted' }, 'A skill hits 100% after about 12 correct answers in it. Answers you get wrong go down again, so this is honest.'),
-    h('div', { class: 'skill-rows big' }, CORE_SKILLS.map(s => h('a', { class: 'skill-row link', href: '#/skill/' + s, title: 'Practice this skill' }, h('span', null, SKILL_NAMES[s]), bar(st[s].mastery, st[s].mastery >= .8 ? 'good' : st[s].tried && st[s].mastery < .5 ? 'warn' : '', SKILL_NAMES[s]), h('b', null, pct(st[s].mastery) + '%')))),
-    h('div', { class: 'share-row' }, h('button', { type: 'button', class: 'btn small', onclick: () => copyText(progressText()) }, '📤 Copy my progress'), h('span', { class: 'muted small' }, 'Paste it to your teacher or a parent.'))));
-  const planEl = h('section', { class: 'card plan' }, h('div', { class: 'sec-h' }, h('h2', null, 'Your 2-day plan'), h('span', { class: 'muted small' }, 'Tap a step. It ticks itself when you finish.')));
+      h('p', { class: 'eyebrow' }, '6th grade Python'),
+      h('h1', null, first ? "Let's get you test-ready." : (ready >= .8 ? 'You are nearly test-ready!' : 'Welcome back. Keep going!')),
+      h('p', { class: 'lead' }, 'The test is built from four commands: ', h('code', null, 'print'), ' ', h('code', null, 'input'), ' ', h('code', null, 'int'), ' ', h('code', null, 'float'), '. Learn them, run real code, and practice until it feels automatic.'),
+      h('div', { class: 'hero-cta' }, h('a', { class: 'btn primary big', href: nxt.href }, (first ? 'Start Lesson 1' : 'Continue'), icon('arrow')), h('a', { class: 'btn on-dark big', href: '#/play' }, icon('code'), 'Playground'))),
+    h('div', { class: 'hero-pip' }, h('div', { class: 'bubble' }, pipSays(first, ready, nxt)), Pip(ready >= .8 ? 'cheer' : 'happy', 170, 'Pip, your coding buddy'))));
+  root.append(h('div', { class: 'stats' },
+    h('a', { class: 'stat-tile', href: '#/badges' }, h('span', { class: 'stat-ico violet' }, icon('trophy')), h('div', null, h('b', null, 'Level ' + li.n), h('span', { class: 'l' }, li.next ? `${li.next - Store.data.xp} XP to ${li.nextName}` : li.name))),
+    h('a', { class: 'stat-tile', href: '#/badges' }, h('span', { class: 'stat-ico coral' }, icon('flame')), h('div', null, h('b', null, streak + (streak === 1 ? ' day' : ' days')), h('span', { class: 'l' }, streak ? 'Practice tomorrow to keep it' : 'Practice today to start'))),
+    h('a', { class: 'stat-tile', href: '#/practice' }, h('span', { class: 'stat-ico mint' }, icon('target')), h('div', null, h('b', null, pct(ready) + '%'), h('span', { class: 'l' }, 'test-ready')))));
+  root.append(h('a', { class: 'quest', href: nxt.href }, h('span', { class: 'q-i' }, icon(/Lesson/.test(nxt.label) ? 'book' : /test|Mock/i.test(nxt.label) ? 'test' : 'target')), h('div', null, h('small', null, "Today's quest"), h('b', null, nxt.label), h('span', { class: 'muted small' }, `About ${nxt.mins} minutes`)), h('span', { class: 'q-go' }, icon('arrow'))));
+  root.append(h('section', { class: 'card' }, h('div', { class: 'sec-h' }, h('h2', null, 'Your skills'), weak.length ? h('a', { class: 'btn small primary', href: '#/weak' }, icon('target'), 'Fix my weak spots') : h('a', { class: 'btn small', href: '#/weak' }, 'Weak-spot practice')),
+    h('p', { class: 'muted' }, 'A skill reaches 100% after about 12 correct answers in it. Wrong answers bring it back down, so this meter is honest.'),
+    h('div', { class: 'skill-rows' }, CORE_SKILLS.map(s => h('a', { class: 'skill-row link', href: '#/skill/' + s, title: 'Practice this skill', style: `--bar:var(--${SKILL_COLOR[s]})` }, h('span', null, SKILL_NAMES[s]), bar(st[s].mastery, '', SKILL_NAMES[s]), h('b', null, pct(st[s].mastery) + '%')))),
+    h('div', { class: 'share-row' }, h('button', { type: 'button', class: 'btn small', onclick: () => copyText(progressText()) }, icon('share'), 'Copy my progress'), h('span', { class: 'muted small' }, 'Paste it to your teacher or a parent.'))));
+  const planEl = h('section', { class: 'card plan' }, h('div', { class: 'sec-h' }, h('h2', null, 'Your 2-day plan'), h('span', { class: 'muted small' }, `${doneCount} of ${totalTasks} steps done. Steps tick themselves.`)));
   plan.forEach(d => {
     const mins = d.tasks.reduce((a, t) => a + t.mins, 0);
     planEl.append(h('div', { class: 'day' }, h('div', { class: 'day-h' }, h('b', null, d.day), h('span', null, ' · ' + d.sub), h('span', { class: 'muted small' }, ` · about ${Math.round(mins / 6) / 10} h`)),
-      h('ul', { class: 'tasks' }, d.tasks.map(t => { const dn = t.done(); return h('li', { class: dn ? 'done' : '' }, h('a', { href: t.href }, h('span', { class: 'tick', 'aria-hidden': 'true' }, dn ? '✔' : ''), h('span', { class: 'tl' }, t.label), h('span', { class: 'tm' }, t.mins + ' min'), dn ? h('span', { class: 'sr-only' }, '(done)') : null)); }))));
+      h('ul', { class: 'tasks' }, d.tasks.map(t => { const dn = t.done(); return h('li', { class: dn ? 'done' : '' }, h('a', { href: t.href }, h('span', { class: 'tick', 'aria-hidden': 'true' }, dn ? icon('check') : null), h('span', { class: 'tl' }, t.label), h('span', { class: 'tm' }, t.mins + ' min'), dn ? h('span', { class: 'sr-only' }, '(done)') : null)); }))));
   });
   root.append(planEl);
-  root.append(h('section', { class: 'card rush' }, h('h2', null, '⚡ Short on time? 30-minute cram'),
+  root.append(h('section', { class: 'card rush' }, h('h2', null, h('span', { class: 'stat-ico sun', style: 'display:inline-grid;width:34px;height:34px;vertical-align:middle;margin-right:10px;border-radius:10px' }, icon('bolt')), 'Short on time? 30-minute cram'),
     h('ol', null, h('li', null, h('a', { href: '#/cheat' }, 'Read the cheat sheet'), ' (5 min)'), h('li', null, h('a', { href: '#/sprint/type' }, 'Type Sprint'), ' x2 (4 min)'), h('li', null, h('a', { href: '#/mixed' }, 'Mixed practice, 15 questions'), ' (12 min)'), h('li', null, h('a', { href: '#/test/10' }, 'Mini test, 10 questions'), ' (10 min)'))));
-  // Level Up teaser
   const lvReady = levelReadiness(); const testReady = ready >= .6 || doneCount >= 14;
-  root.append(h('section', { class: 'card levelup-card' }, h('div', { class: 'lu-top' }, h('div', { class: 'lu-ico', 'aria-hidden': 'true' }, '🚀'),
-    h('div', null, h('p', { class: 'eyebrow lu' }, 'After the test'), h('h2', null, 'Level Up: keep learning'),
-      h('p', { class: 'muted' }, 'Decisions (if / else), loops, strings, lists, functions, and mini projects. Seven more lessons and about 500 more questions, built the same way.'))),
-    h('div', { class: 'lu-row' }, ring(lvReady, 84, 'mastery'), h('div', null, h('div', { class: 'lu-chips' }, LEVEL_UNITS.map(u => h('span', { class: 'chip' + (lessonDone(u) ? ' done' : '') }, (lessonDone(u) ? '✔ ' : '') + unitTitle(u)))),
+  root.append(h('section', { class: 'card levelup-card' }, h('div', { class: 'lu-top' }, h('div', { class: 'lu-ico', 'aria-hidden': 'true' }, icon('rocket')),
+    h('div', null, h('p', { class: 'eyebrow' }, 'After the test'), h('h2', null, 'Level Up: keep learning'),
+      h('p', { class: 'muted' }, 'Decisions (if / else), loops, strings, lists, functions, and mini projects. Seven more lessons and hundreds more questions, built the same way.'))),
+    h('div', { class: 'lu-row' }, ring(lvReady, 84, 'mastery'), h('div', null, h('div', { class: 'lu-chips' }, LEVEL_UNITS.map(u => h('span', { class: 'chip' + (lessonDone(u) ? ' done' : '') }, lessonDone(u) ? icon('check') : null, unitTitle(u)))),
       h('p', { class: 'muted small' }, testReady ? 'You are ready to start whenever you like.' : 'Finish your test prep first. Level Up is not on the test, so it can wait.'))),
-    h('div', { class: 'hero-cta' }, h('a', { class: 'btn' + (testReady ? ' primary' : ''), href: '#/level' }, 'Open Level Up →'))));
+    h('div', { class: 'hero-cta' }, h('a', { class: 'btn' + (testReady ? ' primary' : ' on-dark'), href: '#/level' }, 'Open Level Up', icon('arrow')))));
+  const badges = badgeStatus(); const earnedN = badges.filter(b => b.earned).length;
+  root.append(h('section', { class: 'card' }, h('div', { class: 'sec-h' }, h('h2', null, 'Your badges'), h('a', { class: 'btn small', href: '#/badges' }, `${earnedN} of ${badges.length}`, icon('arrow'))),
+    h('div', { class: 'shelf' }, [...badges].sort((a, b) => b.earned - a.earned).slice(0, 8).map(b => h('div', { class: 'medal-wrap' + (b.earned ? ' earned' : '') }, Medal(b, 60), h('span', null, b.name))))));
   root.append(h('details', { class: 'card faq' }, h('summary', null, 'How do I get the most out of this?'),
     h('ul', null, h('li', null, h('b', null, 'Predict before you run.'), ' In every lesson box, guess the output first, then press Run.'), h('li', null, h('b', null, 'Use Step.'), ' It runs one line at a time and shows each variable and its type.'), h('li', null, h('b', null, 'Love your mistakes.'), ' A wrong answer comes back later in the same practice round.'),
       h('li', null, h('b', null, 'Read the red errors.'), ' The test loves errors. This site explains each one in plain English.'), h('li', null, h('b', null, 'Sleep.'), ' Practice tonight, sleep, take the mock test in the morning.'))));
   root.append(h('div', { class: 'footnote' }, h('button', { type: 'button', class: 'linkbtn', onclick: () => { if (confirm('Erase all your progress on this device?')) { Store.reset(); route(); } } }, 'Reset my progress'),
     h('span', null, ' · Your progress is saved only on this device.')));
+  setTimeout(badgeToast, 400);
+  return root;
+}
+
+/* ---------- BADGES & LEVELS ---------- */
+function BadgesView() {
+  const li = levelInfo(Store.data.xp), streak = dayStreak(), badges = badgeStatus(), earnedN = badges.filter(b => b.earned).length;
+  badges.filter(b => b.earned).forEach(b => { Store.data.badgesSeen[b.id] = 1; }); Store.save();
+  const root = h('div', { class: 'badges-page' });
+  root.append(h('section', { class: 'hero' },
+    h('div', { class: 'hero-text' }, h('p', { class: 'eyebrow' }, 'Your journey'), h('h1', null, `Level ${li.n}: ${li.name}`),
+      h('p', { class: 'lead' }, li.next ? `${Store.data.xp} XP so far. ${li.next - Store.data.xp} more to become a ${li.nextName}.` : `${Store.data.xp} XP. You reached the top level!`),
+      h('div', { class: 'bar', style: 'max-width:420px;height:20px;--bar:var(--sun)', role: 'progressbar', 'aria-label': 'Progress to next level', 'aria-valuenow': pct(li.frac), 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('i', { style: `--v:${li.frac}` }))),
+    h('div', { class: 'hero-pip' }, Pip('cheer', 150, 'Pip celebrating'))));
+  root.append(h('div', { class: 'stats' },
+    h('div', { class: 'stat-tile' }, h('span', { class: 'stat-ico sun' }, icon('star')), h('div', null, h('b', null, String(Store.data.xp)), h('span', { class: 'l' }, 'total XP'))),
+    h('div', { class: 'stat-tile' }, h('span', { class: 'stat-ico coral' }, icon('flame')), h('div', null, h('b', null, streak + (streak === 1 ? ' day' : ' days')), h('span', { class: 'l' }, 'current streak'))),
+    h('div', { class: 'stat-tile' }, h('span', { class: 'stat-ico mint' }, icon('medal')), h('div', null, h('b', null, `${earnedN} / ${badges.length}`), h('span', { class: 'l' }, 'badges earned')))));
+  root.append(h('section', { class: 'card' }, h('h2', null, 'Level ladder'),
+    h('ol', { class: 'ladder' }, LEVELS.map(([xp, name], i) => h('li', { class: 'rung' + (i + 1 === li.n ? ' now' : i + 1 < li.n ? ' done' : '') }, h('span', { class: 'rung-n' }, i + 1 < li.n ? icon('check') : String(i + 1)), h('b', null, name), h('span', { class: 'muted small' }, xp + ' XP'), i + 1 === li.n ? h('span', { class: 'chip' }, 'You are here') : null)))));
+  root.append(h('h2', { class: 'sec-t' }, 'Badges'));
+  root.append(h('div', { class: 'badge-grid' }, [...badges].sort((a, b) => b.earned - a.earned).map(b => h('div', { class: 'card badge-card' + (b.earned ? '' : ' locked') }, Medal(b, 72), h('h3', null, b.name), h('p', null, b.earned ? 'Earned!' : b.hint)))));
+  root.append(h('p', { class: 'muted center' }, 'XP: +10 for a right answer, +20 for a program that passes, half if you needed a retry, +5 per question on a mock test.'));
   return root;
 }
 
 /* ---------- LEARN list ---------- */
 function lessonCard(l) {
   const u = unitStats(l.n); const done = lessonDone(l.n); const lv = l.track === 'level';
-  return h('a', { class: 'card lcard' + (done ? ' done' : '') + (lv ? ' lv' : ''), href: '#/learn/' + l.n },
-    h('div', { class: 'l-ico', 'aria-hidden': 'true' }, l.emoji), h('div', { class: 'l-body' }, h('div', { class: 'l-n' }, lv ? 'Level Up ' + lvNum(l.n) : 'Lesson ' + l.n, h('span', { class: 'muted' }, ` · ${l.minutes} min`), done ? h('span', { class: 'l-done' }, ' ✔ read') : null),
+  return h('a', { class: 'card lcard' + (done ? ' done' : '') + (lv ? ' lv' : ''), href: '#/learn/' + l.n, style: accStyle(l.n) },
+    h('div', { class: 'l-ico', 'aria-hidden': 'true' }, l.emoji), h('div', { class: 'l-body' }, h('div', { class: 'l-n' }, lv ? 'Level Up ' + lvNum(l.n) : 'Lesson ' + l.n, h('span', { class: 'muted' }, ` · ${l.minutes} min`), done ? h('span', { class: 'l-done' }, ' · read') : null),
       h('h3', null, l.title), h('p', { class: 'muted' }, l.goal), h('div', { class: 'l-prog' }, bar(u.mastery, u.mastery >= .8 ? 'good' : '', 'Drill mastery'), h('span', null, `drill ${pct(u.mastery)}%`))));
 }
 function LearnView() {
@@ -121,7 +164,7 @@ async function buildTrace(code, stdin) {
   return { rows, res };
 }
 function TraceBlock(code, stdin) {
-  const lines = code.split('\n'); const root = h('div', { class: 'trace' }, h('div', { class: 'trace-h' }, '🔎 Trace: follow it line by line'), codeBlock(code, { compact: true }));
+  const lines = code.split('\n'); const root = h('div', { class: 'trace' }, h('div', { class: 'trace-h' }, icon('loop'), 'Trace: follow it line by line'), codeBlock(code, { compact: true }));
   const slot = h('div', { class: 'trace-slot muted' }, 'Tracing…'); root.append(slot);
   buildTrace(code, stdin).then(({ rows, res }) => {
     slot.textContent = ''; slot.classList.remove('muted');
@@ -134,15 +177,15 @@ function TraceBlock(code, stdin) {
     }));
     slot.append(...[h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl trace-tbl' }, h('thead', null, h('tr', null, ['Step', 'Line that runs', 'Variables after it runs', 'Printed'].map(x => h('th', null, x)))), tb)),
       rows.length > show.length ? h('p', { class: 'muted small' }, `…and ${rows.length - show.length} more steps.`) : null,
-      res.error ? h('p', { class: 'trace-err' }, '💥 Then it crashes: ' + res.error.type + ' on line ' + res.error.line) : null,
+      res.error ? h('p', { class: 'trace-err' }, 'Then it crashes: ' + res.error.type + ' on line ' + res.error.line) : null,
       h('button', { type: 'button', class: 'linkbtn small', onclick: () => { try { sessionStorage.setItem('pp.play', JSON.stringify({ code, stdin: stdin || [] })); } catch (e) {} location.hash = '#/play'; } }, 'Step through it yourself in the playground ↗')].filter(Boolean));
   });
   return root;
 }
 function BranchBlock(cond, yes, no) {
   return h('div', { class: 'branch', role: 'group', 'aria-label': 'Decision: ' + cond },
-    h('div', { class: 'br-q' }, h('span', { 'aria-hidden': 'true' }, '❓ '), h('code', null, cond)),
-    h('div', { class: 'br-arms' }, h('div', { class: 'br-arm yes' }, h('b', null, '✔ True'), h('span', null, yes)), h('div', { class: 'br-arm no' }, h('b', null, '✘ False'), h('span', null, no))));
+    h('div', { class: 'br-q' }, h('span', { class: 'muted' }, 'Is it true?  '), h('code', null, cond)),
+    h('div', { class: 'br-arms' }, h('div', { class: 'br-arm yes' }, h('b', null, icon('check'), ' True'), h('span', null, yes)), h('div', { class: 'br-arm no' }, h('b', null, icon('x'), ' False'), h('span', null, no))));
 }
 
 /* ---------- LESSON ---------- */
@@ -151,26 +194,26 @@ function LessonView(n) {
   if (!L) return h('div', { class: 'card' }, 'Lesson not found. ', h('a', { href: '#/learn' }, 'Back to lessons'));
   Store.data.visited['l' + n] = 1; Store.save();
   const lv = L.track === 'level';
-  const root = h('article', { class: 'lesson' });
-  root.append(h('div', { class: 'crumbs' }, h('a', { href: '#/learn' }, '← Lessons')),
+  const root = h('article', { class: 'lesson', style: accStyle(n) });
+  root.append(h('div', { class: 'crumbs' }, h('a', { href: '#/learn' }, icon('back'), ' Lessons')),
     h('header', { class: 'l-head' }, h('div', { class: 'l-ico big', 'aria-hidden': 'true' }, L.emoji), h('div', null, h('p', { class: 'eyebrow' + (lv ? ' lu' : '') }, lv ? `Level Up ${lvNum(n)} of 7 · ${L.minutes} minutes` : `Lesson ${n} of 6 · ${L.minutes} minutes`), h('h1', null, L.title), h('p', { class: 'lead' }, 'Goal: ' + L.goal))));
   let tryN = 0;
   for (const b of L.blocks) {
     const [type] = b;
     if (type === 'p') root.append(h('p', { html: b[1] }));
     else if (type === 'h') root.append(h('h2', { class: 'l-h3' }, b[1]));
-    else if (type === 'rule') root.append(h('div', { class: 'callout rule' }, h('div', { class: 'co-h' }, '✅ ' + b[1]), h('div', { html: b[2] })));
-    else if (type === 'trap') root.append(h('div', { class: 'callout trap' }, h('div', { class: 'co-h' }, '⚠ Trap'), h('div', { html: b[1] })));
+    else if (type === 'rule') root.append(h('div', { class: 'callout rule' }, h('div', { class: 'co-h' }, icon('check'), b[1]), h('div', { html: b[2] })));
+    else if (type === 'trap') root.append(h('div', { class: 'callout trap' }, h('div', { class: 'co-h' }, icon('warn'), 'Trap'), h('div', { html: b[1] })));
     else if (type === 'list') root.append(h('ul', { class: 'l-list' }, b[1].map(x => h('li', { html: x }))));
     else if (type === 'table') root.append(h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, b[1].map(c => h('th', null, c)))), h('tbody', null, b[2].map(r => h('tr', null, r.map(c => h('td', { html: c }))))))));
     else if (type === 'pipeline') root.append(h('div', { class: 'pipeline' }, b.slice(1).map((s, i) => [i ? h('span', { class: 'arrow', 'aria-hidden': 'true' }, '→') : null, h('div', { class: 'pstep s' + (i + 1) }, h('b', null, s[0]), h('code', null, s[1]), h('span', null, s[2]))])));
     else if (type === 'branch') root.append(BranchBlock(b[1], b[2], b[3]));
     else if (type === 'trace') root.append(TraceBlock(b[1], b[2] || []));
-    else if (type === 'try') root.append(h('div', { class: 'try' }, h('div', { class: 'try-h' }, '🧪 Try it'), Playground({ code: b[1], stdin: b[2], note: b[3], id: `l${n}-${++tryN}`, minLines: Math.max(3, b[1].split('\n').length) }).el));
+    else if (type === 'try') root.append(h('div', { class: 'try' }, h('div', { class: 'try-h' }, icon('play'), 'Try it'), Playground({ code: b[1], stdin: b[2], note: b[3], id: `l${n}-${++tryN}`, minLines: Math.max(3, b[1].split('\n').length) }).el));
     else if (type === 'show') {
       const [, code, stdin, out, errType] = b;
       const box = h('div', { class: 'show' }, codeBlock(code),
-        stdin.length ? h('div', { class: 'show-in' }, '⌨ typed: ', stdin.map(s => h('code', null, s))) : null,
+        stdin.length ? h('div', { class: 'show-in' }, icon('term'), ' typed: ', stdin.map(s => h('code', null, s))) : null,
         h('div', { class: 'show-out' }, h('span', { class: 'show-l' }, 'Python prints'), h('pre', null, out === '' && !errType ? '(nothing)' : out), errType ? h('div', { class: 'show-err' }, '💥 then crashes with ' + errType) : null),
         h('button', { type: 'button', class: 'linkbtn small', onclick: () => { try { sessionStorage.setItem('pp.play', JSON.stringify({ code, stdin })); } catch (e) {} location.hash = '#/play'; } }, 'Open in playground ↗'));
       root.append(box);
@@ -181,20 +224,20 @@ function LessonView(n) {
         if (done) return; done = true; const good = o === ans; ev.currentTarget.classList.add(good ? 'good' : 'bad');
         if (!good) $$('.opt', wrap)[order.indexOf(ans)].classList.add('good');
         $$('.opt', wrap).forEach(x => x.disabled = true);
-        fb.className = 'quick-fb show ' + (good ? 'ok' : 'no'); fb.textContent = (good ? '✅ ' : '❌ ') + why;
+        fb.className = 'quick-fb show ' + (good ? 'ok' : 'no'); fb.textContent = ''; fb.append(icon(good ? 'check' : 'bulb'), ' ' + (good ? 'Yes! ' : 'Not quite. ') + why);
       } }, h('span', { class: 'opt-n' }, String(k + 1)), h('span', { class: 'opt-t' }, opts[o]))));
-      root.append(h('div', { class: 'quick card' }, h('div', { class: 'quick-h' }, '❓ Quick check'), h('p', { class: 'q-prompt' }, q), wrap, fb));
+      root.append(h('div', { class: 'quick card' }, h('div', { class: 'quick-h' }, icon('bulb'), 'Quick check'), h('p', { class: 'q-prompt' }, q), wrap, fb));
     }
   }
   const can = Store.data.lessons[n] && Store.data.lessons[n].can || [];
   const markBtn = h('button', { type: 'button', class: 'btn' + (lessonDone(n) ? '' : ' primary'), onclick: () => {
-    Store.data.lessons[n] = Object.assign(Store.data.lessons[n] || {}, { done: Date.now(), can }); Store.save(); toast('Lesson marked as read ✔'); markBtn.textContent = '✔ Marked as read'; markBtn.classList.remove('primary');
-  } }, lessonDone(n) ? '✔ Marked as read' : 'I read it - mark done');
+    Store.data.lessons[n] = Object.assign(Store.data.lessons[n] || {}, { done: Date.now(), can }); Store.save(); toast('Lesson marked as read'); markBtn.textContent = ''; markBtn.append(icon('check'), 'Marked as read'); markBtn.classList.remove('primary'); celebrate({ title: 'Lesson done!', text: 'Now try the practice drill.', mood: 'cheer', confetti: false, ms: 2600 }); badgeToast();
+  } }, lessonDone(n) ? [icon('check'), 'Marked as read'] : 'I read it - mark done');
   const nextL = D.lessons.find(x => x.n === n + 1);
   root.append(h('section', { class: 'card cando' }, h('h2', null, 'Can you say yes to each?'),
     h('ul', { class: 'checks' }, L.cando.map((c, i) => h('li', null, h('label', null, h('input', { type: 'checkbox', checked: !!can[i], onchange: e => { can[i] = e.target.checked; Store.data.lessons[n] = Object.assign(Store.data.lessons[n] || {}, { can }); Store.save(); } }), h('span', null, c))))),
-    h('div', { class: 'l-foot' }, markBtn, h('a', { class: 'btn primary big', href: '#/drill/' + n }, `Practice this lesson (${ITEMS.filter(i => i.unit === n).length} questions) →`)),
-    nextL ? h('p', null, h('a', { href: '#/learn/' + nextL.n }, (n === 6 ? 'After the test: Level Up 1 · ' : 'Next lesson: ') + nextL.title + ' →')) : h('p', null, '🎉 You finished every lesson. Try a ', h('a', { href: '#/level' }, 'Level Up checkpoint test'), '.')));
+    h('div', { class: 'l-foot' }, markBtn, h('a', { class: 'btn primary big', href: '#/drill/' + n }, `Practice this lesson (${ITEMS.filter(i => i.unit === n).length} questions)`, icon('arrow'))),
+    nextL ? h('p', null, h('a', { href: '#/learn/' + nextL.n }, (n === 6 ? 'After the test: Level Up 1 · ' : 'Next lesson: ') + nextL.title + ' →')) : h('p', null, 'You finished every lesson. Try a ', h('a', { href: '#/level' }, 'Level Up checkpoint test'), '.')));
   return root;
 }
 
@@ -202,23 +245,23 @@ function LessonView(n) {
 function LevelView() {
   const lvReady = levelReadiness(); const testReady = overallReadiness();
   const root = h('div', { class: 'level' });
-  root.append(h('section', { class: 'hero card lv-hero' }, h('div', { class: 'hero-text' }, h('p', { class: 'eyebrow lu' }, 'Level Up'), h('h1', null, 'Keep learning Python.'),
+  root.append(h('section', { class: 'hero lv-hero' }, h('div', { class: 'hero-text' }, h('p', { class: 'eyebrow lu' }, 'Level Up'), h('h1', null, 'Keep learning Python.'),
     h('p', { class: 'lead' }, 'The test covers the four basics. These seven lessons teach what comes next: making decisions, repeating, and organising code. Same live editor, same practice, same honest meter.'),
-    testReady < .6 && !lessonDone(6) ? h('div', { class: 'callout trap' }, h('div', { class: 'co-h' }, '⏰ Test first'), h('div', null, 'You have a test coming. Level Up is waiting for you afterwards, and it will make more sense once the basics feel automatic.')) : null),
-    h('div', { class: 'hero-ring' }, ring(lvReady, 140, 'Level Up'))));
+    testReady < .6 && !lessonDone(6) ? h('div', { class: 'callout trap' }, h('div', { class: 'co-h' }, icon('warn'), 'Test first'), h('div', null, 'You have a test coming. Level Up is waiting for you afterwards, and it will make more sense once the basics feel automatic.')) : null),
+    h('div', { class: 'hero-pip' }, h('div', { class: 'bubble' }, lvReady >= .5 ? 'Look how far you came!' : 'New skills to unlock!'), Pip('happy', 150, 'Pip'))));
   const path = h('ol', { class: 'roadmap' });
   LEVEL_UNITS.forEach(u => {
     const l = D.lessons.find(x => x.n === u); if (!l) return; const us = unitStats(u); const done = lessonDone(u);
-    path.append(h('li', { class: 'road-node' + (done ? ' done' : '') + (us.mastery >= .8 ? ' mastered' : '') },
-      h('div', { class: 'road-dot', 'aria-hidden': 'true' }, done ? '✔' : l.emoji),
+    path.append(h('li', { class: 'road-node' + (done ? ' done' : '') + (us.mastery >= .8 ? ' mastered' : ''), style: accStyle(u) },
+      h('div', { class: 'road-dot', 'aria-hidden': 'true' }, done ? icon('check') : l.emoji),
       h('div', { class: 'road-card card' }, h('div', { class: 'l-n lu' }, `Level Up ${lvNum(u)} · ${l.minutes} min`), h('h2', null, l.title), h('p', { class: 'muted' }, l.goal),
         h('div', { class: 'l-prog' }, bar(us.mastery, us.mastery >= .8 ? 'good' : '', 'Mastery'), h('span', null, `${pct(us.mastery)}%`)),
         h('div', { class: 'road-btns' }, h('a', { class: 'btn' + (done ? '' : ' primary'), href: '#/learn/' + u }, done ? 'Reread lesson' : 'Start lesson'), h('a', { class: 'btn', href: '#/drill/' + u }, `Practice (${ITEMS.filter(i => i.unit === u).length})`)))));
   });
   root.append(path);
   const lm = levelMocks(); const best = lm.length ? Math.max(...lm.map(m => m.score / m.total)) : null;
-  root.append(h('section', { class: 'card' }, h('h2', null, '📝 Level Up checkpoint test'), h('p', { class: 'muted' }, 'Timed, no hints, questions from units 8-13. Graded at the end with a full review.' + (best != null ? ` Best so far: ${pct(best)}%.` : '')),
-    h('div', { class: 'hero-cta' }, h('a', { class: 'btn primary', href: '#/leveltest/20' }, 'Full checkpoint · 20 questions'), h('a', { class: 'btn', href: '#/leveltest/10' }, 'Mini · 10'), h('a', { class: 'btn ghost', href: '#/weak/level' }, '🎯 Level Up weak spots'))));
+  root.append(h('section', { class: 'card' }, h('h2', null, 'Level Up checkpoint test'), h('p', { class: 'muted' }, 'Timed, no hints, questions from units 8-13. Graded at the end with a full review.' + (best != null ? ` Best so far: ${pct(best)}%.` : '')),
+    h('div', { class: 'hero-cta' }, h('a', { class: 'btn primary', href: '#/leveltest/20' }, 'Full checkpoint · 20 questions'), h('a', { class: 'btn', href: '#/leveltest/10' }, 'Mini · 10'), h('a', { class: 'btn ghost', href: '#/weak/level' }, icon('target'), 'Level Up weak spots'))));
   root.append(h('p', { class: 'muted center' }, 'Need a reminder? ', h('a', { href: '#/cheat/level' }, 'Level Up cheat sheet'), '.'));
   return root;
 }
@@ -227,27 +270,28 @@ function LevelView() {
 function PracticeView() {
   const root = h('div', null, h('div', { class: 'page-h' }, h('h1', null, 'Practice'), h('p', { class: 'muted' }, 'The more you do, the more automatic it gets. Wrong answers return later in the round.')));
   const modes = [
-    ['⚡', 'Type Sprint', 'int, float, str or error? 60 seconds, as many as you can.', '#/sprint/type'],
-    ['♾️', 'Endless practice', 'Brand-new generated questions every time. Never run out.', '#/endless'],
-    ['🎯', 'Weak-spot rescue', 'Built from your misses and your lowest skills.', '#/weak'],
-    ['🔀', 'Mixed practice', '15 mixed questions from the six test lessons.', '#/mixed'],
-    ['🐞', 'Bug hunt', 'Broken programs. Find and fix the bug.', '#/kind/fix'],
-    ['✍️', 'Code writer', 'Write whole programs. Hidden tests grade them.', '#/kind/write'],
-    ['🪤', 'Trap questions', 'The tricky ones: types, errors, input() text.', '#/drill/5'],
-    ['📝', 'Mock test', 'Timed, no hints, like the real thing.', '#/test'],
+    ['bolt', 'sun', 'Type Sprint', 'int, float, str or error? 60 seconds, as many as you can.', '#/sprint/type'],
+    ['infinity', 'sky', 'Endless practice', 'Brand-new generated questions every time. Never run out.', '#/endless'],
+    ['target', 'coral', 'Weak-spot rescue', 'Built from your misses and your lowest skills.', '#/weak'],
+    ['shuffle', 'violet', 'Mixed practice', '15 mixed questions from the six test lessons.', '#/mixed'],
+    ['bug', 'mint', 'Bug hunt', 'Broken programs. Find and fix the bug.', '#/kind/fix'],
+    ['pencil', 'pink', 'Code writer', 'Write whole programs. Hidden tests grade them.', '#/kind/write'],
+    ['warn', 'sun', 'Trap questions', 'The tricky ones: types, errors, input() text.', '#/drill/5'],
+    ['test', 'violet', 'Mock test', 'Timed, no hints, like the real thing.', '#/test'],
   ];
-  const modeCard = m => h('a', { class: 'card mode', href: m[3] }, h('div', { class: 'm-ico', 'aria-hidden': 'true' }, m[0]), h('div', null, h('h3', null, m[1]), h('p', { class: 'muted' }, m[2])));
+  const hueS = c => `--acc:var(--${c});--acc-soft:var(--${c}-soft);--acc-ink:var(--${c}-ink)`;
+  const modeCard = m => h('a', { class: 'card mode', href: m[4], style: hueS(m[1]) }, h('div', { class: 'm-ico', 'aria-hidden': 'true' }, icon(m[0])), h('div', null, h('h3', null, m[2]), h('p', { class: 'muted' }, m[3])));
   root.append(h('h2', { class: 'track-h' }, h('span', { class: 'track-pill test' }, 'TEST PREP'), ' Practice modes'));
   root.append(h('div', { class: 'modes' }, modes.map(modeCard)));
   root.append(h('h2', { class: 'sec-t' }, 'Drill by lesson'));
-  const unitCard = l => { const u = unitStats(l.n); return h('a', { class: 'card unit' + (l.track === 'level' ? ' lv' : ''), href: '#/drill/' + l.n }, h('div', { class: 'u-top' }, h('span', { class: 'u-emo', 'aria-hidden': 'true' }, l.emoji), h('b', null, l.track === 'level' ? 'Level ' + lvNum(l.n) : 'Unit ' + l.n)), h('div', { class: 'u-title' }, unitTitle(l.n)), bar(u.mastery, u.mastery >= .8 ? 'good' : '', 'Mastery'), h('span', { class: 'muted small' }, `${u.total} questions · ${pct(u.mastery)}%`)); };
+  const unitCard = l => { const u = unitStats(l.n); return h('a', { class: 'card unit' + (l.track === 'level' ? ' lv' : ''), href: '#/drill/' + l.n, style: accStyle(l.n) }, h('div', { class: 'u-top' }, h('span', { class: 'u-emo', 'aria-hidden': 'true' }, l.emoji), h('b', null, l.track === 'level' ? 'Level ' + lvNum(l.n) : 'Unit ' + l.n)), h('div', { class: 'u-title' }, unitTitle(l.n)), bar(u.mastery, u.mastery >= .8 ? 'good' : '', 'Mastery'), h('span', { class: 'muted small' }, `${u.total} questions · ${pct(u.mastery)}%`)); };
   root.append(h('div', { class: 'unit-grid' }, D.lessons.filter(l => l.track === 'test').map(unitCard)));
   root.append(h('h2', { class: 'sec-t' }, 'Drill by skill'));
   const st = skillStats();
   root.append(h('div', { class: 'chips' }, CORE_SKILLS.map(s => h('a', { class: 'chip big', href: '#/skill/' + s }, SKILL_NAMES[s] + ' · ' + pct(st[s].mastery) + '%'))));
   root.append(h('h2', { class: 'track-h' }, h('span', { class: 'track-pill lv' }, 'LEVEL UP'), ' Keep learning'));
-  root.append(h('div', { class: 'modes' }, [['🔀', 'Level Up mixed', '15 mixed questions from the Level Up lessons.', '#/mixed/level'], ['🎯', 'Level Up weak spots', 'Built from your misses.', '#/weak/level'],
-    ['🐞', 'Level Up bug hunt', 'Fix broken loops, lists and functions.', '#/kind/fix/level'], ['✍️', 'Level Up code writer', 'Write programs with if, loops, lists and functions.', '#/kind/write/level']].map(modeCard)));
+  root.append(h('div', { class: 'modes' }, [['shuffle', 'violet', 'Level Up mixed', '15 mixed questions from the Level Up lessons.', '#/mixed/level'], ['target', 'coral', 'Level Up weak spots', 'Built from your misses.', '#/weak/level'],
+    ['bug', 'mint', 'Level Up bug hunt', 'Fix broken loops, lists and functions.', '#/kind/fix/level'], ['pencil', 'pink', 'Level Up code writer', 'Write programs with if, loops, lists and functions.', '#/kind/write/level']].map(modeCard)));
   root.append(h('div', { class: 'unit-grid', style: 'margin-top:14px' }, D.lessons.filter(l => l.track === 'level').map(unitCard)));
   root.append(h('div', { class: 'chips', style: 'margin-top:14px' }, LEVEL_SKILLS.map(s => h('a', { class: 'chip big', href: '#/skill/' + s }, SKILL_NAMES[s] + ' · ' + pct(st[s].mastery) + '%'))));
   return root;
@@ -259,8 +303,8 @@ function TestHubView() {
   const tm = testMocks(); const best = tm.length ? Math.max(...tm.map(m => m.score / m.total)) : null;
   root.append(h('div', { class: 'card' },
     h('div', { class: 'test-opts' },
-      h('div', { class: 'to' }, h('h2', null, '📝 Full test'), h('p', { class: 'muted' }, '20 questions · 30 minutes. 6 predict-the-output, 3 types, 2 type-it-in, 2 fill-in, 2 quick checks, 1 find-the-crash, 2 bug hunts, 2 write-the-code.'), h('a', { class: 'btn primary big', href: '#/test/20' }, 'Start full test')),
-      h('div', { class: 'to' }, h('h2', null, '⏱ Mini test'), h('p', { class: 'muted' }, '10 questions · 15 minutes. Same mix, half the size.'), h('a', { class: 'btn big', href: '#/test/10' }, 'Start mini test'))),
+      h('div', { class: 'to' }, h('h2', null, 'Full test'), h('p', { class: 'muted' }, '20 questions · 30 minutes. 6 predict-the-output, 3 types, 2 type-it-in, 2 fill-in, 2 quick checks, 1 find-the-crash, 2 bug hunts, 2 write-the-code.'), h('a', { class: 'btn primary big', href: '#/test/20' }, 'Start full test')),
+      h('div', { class: 'to' }, h('h2', null, 'Mini test'), h('p', { class: 'muted' }, '10 questions · 15 minutes. Same mix, half the size.'), h('a', { class: 'btn big', href: '#/test/10' }, 'Start mini test'))),
     best != null ? h('p', { class: 'muted' }, `Tests taken: ${tm.length} · best score ${pct(best)}%`) : null));
   if (tm.length) root.append(h('div', { class: 'card' }, h('h2', null, 'Your scores'), h('div', { class: 'spark' }, tm.slice(-12).map(m => h('div', { class: 'spark-col', title: `${m.score}/${m.total}` }, h('i', { style: `height:${Math.max(6, pct(m.score / m.total))}%` }), h('span', null, pct(m.score / m.total) + '%'))))));
   root.append(h('div', { class: 'card tips' }, h('h2', null, 'Test-taking checklist'), h('ol', null,
@@ -291,7 +335,7 @@ function PlayView() {
   const sel = h('select', { 'aria-label': 'Load an example', onchange: e => { const ex = EXAMPLES[e.target.value]; if (!ex) return; pg.stop(true); holder.textContent = ''; pg = Playground({ code: ex[1], stdin: ex[2], minLines: 10, id: 'play' }); holder.append(pg.el); } },
     h('option', { value: '' }, 'Load an example…'), EXAMPLES.map((e, i) => h('option', { value: i }, e[0])));
   root.append(h('div', { class: 'card' }, h('div', { class: 'pg-bar' }, h('label', null, 'Examples '), sel), holder));
-  root.append(h('div', { class: 'callout tip' }, h('div', { class: 'co-h' }, '💡 Challenge'), h('div', null, 'Before you press Run, write down what you think it will print. Then run it. Every surprise is a point you just earned on the test.')));
+  root.append(h('div', { class: 'callout tip' }, h('div', { class: 'co-h' }, icon('bulb'), 'Challenge'), h('div', null, 'Before you press Run, write down what you think it will print. Then run it. Every surprise is a point you just earned on the test.')));
   return root;
 }
 
@@ -302,7 +346,7 @@ function CheatView(which) {
   const tab = which === 'level' ? 'level' : 'test';
   root.append(h('div', { class: 'page-h' }, h('h1', null, 'Cheat sheet'), h('p', { class: 'muted' }, tab === 'test' ? 'Everything for the test on one page. Read it tonight and again before the test.' : 'The Level Up topics on one page.'),
     h('div', { class: 'seg', role: 'tablist' }, h('a', { class: 'seg-b' + (tab === 'test' ? ' on' : ''), href: '#/cheat', role: 'tab', 'aria-selected': tab === 'test' }, 'Test basics'), h('a', { class: 'seg-b' + (tab === 'level' ? ' on' : ''), href: '#/cheat/level', role: 'tab', 'aria-selected': tab === 'level' }, 'Level Up')),
-    h('button', { type: 'button', class: 'btn', onclick: () => window.print() }, '🖨 Print this page')));
+    h('button', { type: 'button', class: 'btn', onclick: () => window.print() }, icon('print'), 'Print this page')));
   const sec = (t, html) => h('section', { class: 'card cs' }, h('h2', null, t), h('div', { html }));
   if (tab === 'level') {
     root.append(
