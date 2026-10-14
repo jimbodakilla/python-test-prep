@@ -56,7 +56,7 @@ async function TypeSprint() {
   const missed = [];
   const timerEl = h('span', { class: 'timer' }, '⏱ 60'), scoreEl = h('span', { class: 'stat' }, '✅ 0'), streakEl = h('span', { class: 'stat' }, '🔥 0');
   const stage = h('div', { class: 'sess-stage' });
-  root.append(h('div', { class: 'sess-top' }, h('a', { class: 'back', href: '#/practice' }, '← Practice'), h('div', { class: 'sess-title' }, 'Type Sprint · 60 seconds'), h('div', { class: 'sess-stats' }, scoreEl, streakEl, timerEl)), stage);
+  root.append(h('div', { class: 'sess-top' }, h('a', { class: 'back', href: '#/practice' }, '← Practice'), h('h1', { class: 'sess-title' }, 'Type Sprint · 60 seconds'), h('div', { class: 'sess-stats' }, scoreEl, streakEl, timerEl)), stage);
   const intro = h('div', { class: 'card center' }, h('h2', null, '⚡ Type Sprint'), h('p', null, 'You get an expression. Tap what TYPE it gives: ', typeBadge('int'), ' ', typeBadge('float'), ' ', typeBadge('str'), ' or 💥 Error.'),
     h('p', { class: 'muted' }, 'Keys 1-4 work. Wrong answers show why. How many can you get in 60 seconds?'),
     Store.data.best.type ? h('p', null, 'Your best: ', h('b', null, Store.data.best.type)) : null,

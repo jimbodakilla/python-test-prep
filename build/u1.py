@@ -83,7 +83,7 @@ write(U, 'Print <b>Result: 48</b>, where 48 is calculated by Python as 6 * 8. Us
       'Text, comma, math.', skill='join', must=[[r'6\s*\*\s*8', 'Let Python do 6 * 8.']])
 
 # ---------- concept ----------
-know(U, 'What do the quotation marks in print("Hi") do?', ['They tell Python the words are TEXT', 'They get printed on screen', 'They make Python do math', 'They are optional'],
+know(U, 'What do the quotation marks in print("Hi") do?', ['They tell Python the words are TEXT', 'They get printed on the screen with the words', 'They tell Python to do math on the words', 'They are only decoration inside print()'],
      'Quotes mark where text starts and stops. They are not printed.', skill='print')
 know(U, 'Which one prints the ANSWER 9?', ['print(4 + 5)', 'print("4 + 5")', 'print("9")+', 'Print(4 + 5)'],
      'Only the one without quotes does math. print("4 + 5") prints the text 4 + 5.', skill='print')

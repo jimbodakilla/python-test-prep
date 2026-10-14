@@ -56,7 +56,7 @@ write(U, 'Ask for two words (two inputs). Print the SECOND one first, then the f
       'Order of print() decides what shows first.', skill='input')
 
 know(U, 'What type of value does input() ALWAYS give you?', ['str (text)', 'int', 'float', 'It depends what you type'], 'Always text - even if you type 7.', skill='input')
-know(U, 'The user types 25. Which statement is TRUE?', ['input() gives the text "25", not the number 25', 'input() gives the number 25', 'input() gives 25.0', 'Python decides if it is text or number'], 'Python never guesses. input() = text.', skill='input')
-know(U, 'What is the "prompt" in input("Age? ")?', ['The message shown to the user', 'The answer typed', 'The variable', 'A number'], 'The prompt is only the question shown on screen.', skill='input')
+know(U, 'The user types 25. Which statement is TRUE?', ['input() gives the text "25", not the number 25', 'input() gives the number 25 since digits were typed', 'input() gives the decimal number 25.0', 'Python looks at the digits and picks a type'], 'Python never guesses. input() = text.', skill='input')
+know(U, 'What is the "prompt" in input("Age? ")?', ['The message shown to the user', 'The answer the user types in', 'The variable that stores the age', 'The number that comes back'], 'The prompt is only the question shown on screen.', skill='input')
 know(U, 'Where does the typed answer go if you write only input() with no variable?', ['Nowhere - it is lost', 'Into a variable called input', 'Into the print', 'It prints'], 'Use x = input() to keep it.', skill='input')
-know(U, 'True or False: x = input() and the user types 3. Then x + 1 equals 4.', ['False - it crashes (TypeError)', 'True', 'False - it prints 31', 'False - it prints 3'], 'x is the text "3". Text + number = TypeError.', skill='input')
+know(U, 'True or False: x = input() and the user types 3. Then x + 1 equals 4.', ['False - it crashes (TypeError)', 'True - 3 + 1 makes 4', 'False - it prints the text 31', 'False - it prints the text 3'], 'x is the text "3". Text + number = TypeError.', skill='input')

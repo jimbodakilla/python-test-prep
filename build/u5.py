@@ -21,7 +21,6 @@ out(U, 'a = int("5")\nb = 5\nprint(a + b)', ['55', 'Error: TypeError', '10.0'], 
 out(U, 'x = 5\nprint(X)', ['5', 'X', 'Error: SyntaxError'], 'Capital X is a different name that was never created: NameError.', skill='errors')
 
 # ---------- tricky outputs ----------
-out(U, 'print(10 / 2)', ['5', '2', '20'], 'Division / always gives a float: 5.0.', skill='types')
 out(U, 'print(int(10 / 2))', ['5.0', '2', '20'], 'int() removes the .0: 5.', skill='types')
 out(U, 'print(3 * "ab")', ['ab3', '6', 'ababab'], 'Text repeated 3 times.', skill='types')
 out(U, 'print("3" * 2)', ['6', '3 3', '33'], 'The TEXT "3" repeated twice: 33.', skill='types')
@@ -79,13 +78,13 @@ fix(U, 'It crashes with NameError. It should print 15.', 'a = 5\nb = 10\nprint(a
 fix(U, 'It should print 3 (the typed number plus 1) but crashes on the second line.', 'n = input()\nprint(n + 1)', 'n = int(input())\nprint(n + 1)', [['2'], ['9']], 'Convert first.', skill='errors')
 fix(U, 'The program should add the numbers, but prints them stuck together. Fix it.', 'a = input()\nb = input()\nprint(int(a + b))', 'a = int(input())\nb = int(input())\nprint(a + b)', [['3', '4'], ['10', '5']], 'Convert each BEFORE adding. int("3" + "4") is int("34") = 34.', skill='errors', level=3)
 
-know(U, 'A TypeError usually means ...', ['You mixed types that can not go together (like text + number)', 'The text can not become a number', 'A word was not defined', 'You forgot a bracket'], 'TypeError = wrong type for that operation.', skill='errors')
-know(U, 'A ValueError usually means ...', ['The value can not be converted (like int("abc"))', 'You mixed text and number with +', 'A variable is missing', 'A bracket is missing'], 'ValueError = right type of thing, but a bad value.', skill='errors')
-know(U, 'A NameError usually means ...', ['Python does not know that name (typo, capital letter, or missing quotes)', 'You divided by zero', 'The program ran out of memory', 'You mixed text and numbers'], 'NameError = unknown name.', skill='errors')
-know(U, 'A SyntaxError usually means ...', ['Python can not even read it (missing quote/bracket/comma)', 'Wrong value converted', 'Wrong types mixed', 'Name not defined'], 'Syntax = the grammar of the code is broken.', skill='errors')
+know(U, 'A TypeError usually means ...', ['You mixed types that can not go together (like text + number)', 'The text can not be turned into a number', 'A word was used that Python has never heard of', 'A bracket or quote was never closed in a line'], 'TypeError = wrong type for that operation.', skill='errors')
+know(U, 'A ValueError usually means ...', ['The value can not be converted (like int("abc"))', 'You mixed text and a number with a + sign', 'A variable name was used before it was made', 'A bracket or a quote was never closed'], 'ValueError = right type of thing, but a bad value.', skill='errors')
+know(U, 'A NameError usually means ...', ['Python does not know that name (typo or missing quotes)', 'You divided a number by zero somewhere in the code', 'You added text and a number using the + sign', 'A bracket or a quote was never closed in a line'], 'NameError = unknown name.', skill='errors')
+know(U, 'A SyntaxError usually means ...', ['Python can not even read it (missing quote or bracket)', 'A value could not be converted by int()', 'You added text and a number with a + sign', 'A name was used before it was created'], 'Syntax = the grammar of the code is broken.', skill='errors')
 know(U, 'Which of these crashes?', ['"7" + 3', '7 + 3', '"7" + "3"', '"7" * 3'], 'Text + number is the only one that crashes.', skill='errors')
 know(U, 'What does "ZeroDivisionError" mean?', ['You divided by zero', 'You used zero as a variable', 'The answer was zero', 'You typed the number zero'], 'You can not divide by zero.', skill='errors')
 know(U, 'Which is a float?', ['5.0', '5', '"5.0"', '"five"'], '5.0 has a decimal point and no quotes.', skill='types')
-know(U, 'Which one is a str?', ['"7.5"', '7.5', '7', '-7'], 'Quotes make a str - even around digits.', skill='types')
+know(U, 'Which one is a str?', ['"7.5"', '7.5', '7.0', '-7.5'], 'Quotes make a str - even around digits.', skill='types')
 know(U, 'What type is the result of 8 / 4 ?', ['float', 'int', 'str', 'error'], '/ always gives a float: 2.0.', skill='types')
 know(U, 'Which makes sure you get a whole number from a decimal?', ['int(7.9)', 'float(7.9)', 'str(7.9)', 'input(7.9)'], 'int() chops to a whole number.', skill='types')

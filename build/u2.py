@@ -65,8 +65,8 @@ write(U, 'A box is <b>w = 6</b> wide and <b>h = 4</b> tall. Make variables and p
       'w = 6\nh = 4\nprint("Area:", w * h)', [[]], ['Make w and h, then print("Area:", ...)'],
       'Use variables in your math.', skill='math', must=[[r'w\s*\*\s*h|h\s*\*\s*w', 'Calculate with w * h.']])
 
-know(U, 'What does x = 7 do?', ['Stores the value 7 in the name x', 'Checks if x equals 7', 'Prints 7', 'Makes x a text'], 'One = is "store". It is not asking a question.', skill='math')
+know(U, 'What does x = 7 do?', ['Stores the value 7 in the name x', 'Asks whether x is equal to 7', 'Prints the number 7 on the screen', 'Turns x into the text "7"'], 'One = is "store". It is not asking a question.', skill='math')
 know(U, 'Which is a GOOD variable name?', ['my_age', 'my age', '2cool', 'my-age'], 'Names cannot have spaces, cannot start with a number, and cannot have dashes. Underscores are fine.', skill='math')
 know(U, 'After x = 3 then x = x + 2, what is x?', ['5', '3', '2', '32'], 'Take the old x (3), add 2, store the result (5).', skill='math')
-know(U, 'What does the / operator always give?', ['A float (like 2.0)', 'An int', 'A string', 'An error'], '10 / 5 gives 2.0, not 2.', skill='math')
+know(U, 'What does the / operator always give?', ['A float (like 2.0)', 'An int (like 2)', 'A str (like "2")', 'An error when it divides evenly'], '10 / 5 gives 2.0, not 2.', skill='math')
 know(U, 'Which is calculated FIRST in 2 + 3 * 4 ?', ['3 * 4', '2 + 3', 'All at once', 'Left to right'], 'Multiplication before addition, just like math class.', skill='math')

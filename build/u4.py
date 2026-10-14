@@ -88,7 +88,7 @@ write(U, 'Ask for length and width (decimals allowed) and print the <b>area</b>.
 
 know(U, 'What does int(8.9) give?', ['8', '9', '8.9', 'Error'], 'int() chops off the decimals. It never rounds.', skill='convert')
 know(U, 'What does float("4") give?', ['4.0', '4', '"4"', 'Error'], 'A float always prints with a decimal point.', skill='convert')
-know(U, 'Which command should you use if the user might type 3.75?', ['float(input())', 'int(input())', 'str(input())', 'input()'], 'int() crashes on decimals; float() handles them.', skill='convert')
+know(U, 'Which command should you use if the user might type 3.75?', ['x = float(input())', 'x = int(input())', 'x = str(input())', 'x = input()'], 'int() crashes on decimals; float() handles them.', skill='convert')
 know(U, 'Which command is right for "How many apples?" (a whole number)', ['int(input())', 'float(input())', 'input()', 'print(input())'], 'Whole number answers -> int().', skill='convert')
-know(U, 'What does int("3.5") do?', ['Crashes with ValueError', 'Gives 3', 'Gives 4', 'Gives 3.5'], 'The text "3.5" is not a whole number. Convert it with float() first (or float then int).', skill='convert')
-know(U, 'Why do we write int(input()) ?', ['input() gives text; int() turns it into a number', 'To make input() faster', 'To print the input', 'int() asks the question'], 'Text can not be added/multiplied like numbers.', skill='convert')
+know(U, 'What does int("3.5") do?', ['Crashes with a ValueError', 'Gives the whole number 3', 'Rounds up and gives 4', 'Gives the decimal 3.5'], 'The text "3.5" is not a whole number. Convert it with float() first (or float then int).', skill='convert')
+know(U, 'Why do we write int(input()) ?', ['input() gives text; int() turns it into a number', 'It makes input() run faster on big numbers', 'It prints whatever the user typed in', 'int() is the part that asks the question'], 'Text can not be added/multiplied like numbers.', skill='convert')

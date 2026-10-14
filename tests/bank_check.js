@@ -16,6 +16,7 @@ const URL = 'file://' + path.resolve(__dirname, '../index.html');
            for (const w of it.opts.slice(1)) { const kk=await keyOf(it.code.replace('___',w),it.stdin); if(kk===it.want) bad.push([it.id,'fill-wrong-passes',w]); } }
         else if (it.kind==='fix'||it.kind==='write') {
           const g=await gradeCode(it, it.solution); if(!g.ok) bad.push([it.id,'solution fails grader', JSON.stringify(g.tests.map(t=>t.got)), JSON.stringify(g.must)]);
+          for (const [ai,alt] of (it.alts||[]).entries()){ const ga=await gradeCode(it, alt); if(!ga.ok) bad.push([it.id,'ALT '+ai+' fails grader', JSON.stringify(ga.tests.filter(t=>!t.pass).map(t=>[t.stdin,t.expect,t.got,t.error&&t.error.type])), JSON.stringify(ga.must)]); }
           if (it.kind==='fix'){ const g2=await gradeCode(it, it.buggy); if(g2.ok) bad.push([it.id,'buggy passes grader']); }
           if (it.kind==='write'){ const g3=await gradeCode(it, ''); if(g3.ok) bad.push([it.id,'EMPTY code passes grader']); }
         }

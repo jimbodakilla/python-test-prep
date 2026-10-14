@@ -5,7 +5,9 @@ const PF = window.PyFun;
 const ITEMS = D.items;
 const BYID = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 const SKILL_NAMES = D.skills;
-const CORE_SKILLS = ['print', 'join', 'math', 'input', 'convert', 'types', 'errors', 'programs'];
+const CORE_SKILLS = D.testSkills, LEVEL_SKILLS = D.levelSkills, ALL_SKILLS = [...D.testSkills, ...D.levelSkills];
+const UNITS = D.units, unitTrack = u => (UNITS[u] || { track: 'level' }).track, unitTitle = u => (UNITS[u] || {}).title || '';
+const TEST_UNITS = Object.keys(UNITS).map(Number).filter(u => UNITS[u].track === 'test'), LEVEL_UNITS = Object.keys(UNITS).map(Number).filter(u => UNITS[u].track === 'level');
 
 /* ---------- DOM ---------- */
 function h(tag, attrs, ...kids) {
@@ -35,9 +37,12 @@ const Store = {
   load() {
     let d = null;
     try { d = JSON.parse(localStorage.getItem(this.key)); } catch (e) { d = null; }
-    if (!d || typeof d !== 'object') d = {};
-    d.items = d.items || {}; d.lessons = d.lessons || {}; d.sessions = d.sessions || []; d.mocks = d.mocks || [];
-    d.xp = d.xp || 0; d.best = d.best || {}; d.visited = d.visited || {}; d.plan = d.plan || {};
+    if (!d || typeof d !== 'object' || Array.isArray(d)) d = {};
+    const obj = x => (x && typeof x === 'object' && !Array.isArray(x)) ? x : {}, arr = x => Array.isArray(x) ? x : [];
+    d.items = obj(d.items); d.lessons = obj(d.lessons); d.best = obj(d.best); d.visited = obj(d.visited); d.plan = obj(d.plan);
+    d.sessions = arr(d.sessions).filter(s => s && typeof s === 'object'); d.mocks = arr(d.mocks).filter(m => m && Number.isFinite(m.total) && m.total > 0);
+    d.xp = Number.isFinite(d.xp) ? d.xp : 0;
+    if (d.theme !== 'light' && d.theme !== 'dark') delete d.theme;
     this.data = d;
   },
   save() { try { localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) { /* private mode: keep in memory */ } },
@@ -47,7 +52,7 @@ const Store = {
     r.n++; if (ok) { r.right++; r.ever = true; } r.last = ok; r.ts = Date.now();
     this.data.items[id] = r; this.save();
   },
-  addXp(n) { this.data.xp += n; this.save(); },
+  addXp(n) { this.data.xp += n; this.save(); const x = document.getElementById('xp'); if (x) x.textContent = '⭐ ' + this.data.xp; },
   reset() { this.data = null; try { localStorage.removeItem(this.key); } catch (e) {} this.load(); },
 };
 Store.load();
@@ -65,18 +70,21 @@ function norm(s) { return String(s).replace(/\r/g, '').split('\n').map(l => l.re
 /* ---------- mastery ---------- */
 function skillStats() {
   const out = {};
-  for (const s of CORE_SKILLS) out[s] = { total: 0, solved: 0, tried: 0, wrongNow: 0 };
+  for (const s of ALL_SKILLS) out[s] = { total: 0, solved: 0, tried: 0, wrongNow: 0 };
   for (const it of ITEMS) {
     const st = out[it.skill]; if (!st) continue;
     st.total++;
     const r = Store.data.items[it.id];
     if (r) { st.tried++; if (r.last) st.solved++; else st.wrongNow++; }
   }
-  for (const s of CORE_SKILLS) { const st = out[s]; st.mastery = Math.min(1, st.solved / Math.min(st.total, 12)); }
+  for (const s of ALL_SKILLS) { const st = out[s]; st.mastery = Math.min(1, st.solved / Math.min(st.total, 12)); }
   return out;
 }
 function overallReadiness() {
   const st = skillStats(); return CORE_SKILLS.reduce((a, s) => a + st[s].mastery, 0) / CORE_SKILLS.length;
+}
+function levelReadiness() {
+  const st = skillStats(); return LEVEL_SKILLS.reduce((a, s) => a + st[s].mastery, 0) / LEVEL_SKILLS.length;
 }
 function unitStats(u) {
   const its = ITEMS.filter(i => i.unit === u);
@@ -86,8 +94,8 @@ function unitStats(u) {
 }
 
 /* ---------- syntax highlighting ---------- */
-const BUILTINS = new Set(['print', 'input', 'int', 'float', 'str', 'type', 'round', 'abs', 'len', 'max', 'min']);
-const CONSTS = new Set(['True', 'False', 'None']);
+const BUILTINS = new Set(['print', 'input', 'int', 'float', 'str', 'type', 'round', 'abs', 'len', 'max', 'min', 'range', 'sum', 'sorted', 'list', 'bool']);
+const CONSTS = new Set(['True', 'False', 'None', 'if', 'elif', 'else', 'while', 'for', 'in', 'def', 'return', 'break', 'continue', 'pass', 'global', 'and', 'or', 'not']);
 const HL_RE = /(#.*$)|([fFrR]{0,2}(?:"(?:\\.|[^"\\])*(?:"|$)|'(?:\\.|[^'\\])*(?:'|$)))|(\b\d+\.?\d*(?:[eE][+-]?\d+)?\b|\.\d+)|([A-Za-z_][A-Za-z_0-9]*)|(\*\*|\/\/|[+\-*\/%=<>!]=?)/g;
 function hlLine(line) {
   let out = '', last = 0, m; HL_RE.lastIndex = 0;
@@ -123,6 +131,45 @@ function explainError(err, vars, code) {
   const names = (vars || []).map(v => v.name);
   let mm;
   const E = (what, fix) => ({ what, fix });
+  if (t === 'TimeLimit') return E('Your program ran for a very long time. It is probably stuck in a loop that <b>never ends</b>.', 'In a <code>while</code> loop, something inside must change so the condition becomes False (like <code>count = count + 1</code>). A <code>for</code> loop over <code>range()</code> always ends. Press Stop next time.');
+  if (t === 'IndexError') {
+    if (/string index/.test(m)) return E('You asked for a letter at a position that does not exist. Positions start at <b>0</b>, so a word with 5 letters ends at position <b>4</b>.', 'The last letter is <code>text[-1]</code> or <code>text[len(text) - 1]</code>.');
+    if (/pop/.test(m)) return E('You tried to <code>pop</code> from an empty list or from a position that is not there.', 'Check <code>len(list)</code> first.');
+    return E('You asked for a list position that does not exist. A list with 3 items has positions <b>0, 1, 2</b> (not 3).', 'The last item is <code>my_list[-1]</code> or <code>my_list[len(my_list) - 1]</code>. In a loop, <code>range(len(my_list))</code> stops at the right place.');
+  }
+  if (t === 'UnboundLocalError') return E('Inside a function, assigning to a name makes it a <b>new local variable</b> that starts empty. You read it before giving it a value.', 'Pass the value in as a parameter and <code>return</code> the new value. (Or add <code>global name</code> as the first line of the function.)');
+  if (t === 'RecursionError') return E('A function kept calling itself and never stopped.', 'Check that the function does not call itself without an ending condition.');
+  if (t === 'AttributeError') {
+    mm = /'(\w+)' object has no attribute '(\w+)'/.exec(m);
+    if (mm && mm[1] === 'NoneType') return E('This value is <b>None</b> (nothing). A function with no <code>return</code>, or <code>list.sort()</code> / <code>append()</code>, gives back None.', 'Do not store the result of <code>sort()</code> or <code>append()</code>. Call <code>my_list.sort()</code> on its own line, then use <code>my_list</code>.');
+    if (mm) return E('A <b>' + mm[1] + '</b> does not have a method called <code>' + esc(mm[2]) + '</code>. Methods belong to a type: strings have <code>upper()</code>, lists have <code>append()</code>.', 'Check the spelling and the type with <code>print(type(x))</code>.');
+  }
+  if (t === 'TypeError') {
+    if (/NoneType/.test(m) && /unsupported operand|not subscriptable|not iterable|has no len/.test(m)) return E('One of the values is <b>None</b> (nothing). A function that only <b>prints</b> (no <code>return</code>) gives back None, and so does <code>list.sort()</code>.', 'Use <code>return value</code> inside the function, then store the result: <code>x = my_function(...)</code>.');
+    if ((mm = /(\w+)\(\) missing (\d+) required positional argument/.exec(m))) return E('You called <code>' + mm[1] + '()</code> with <b>too few</b> values. It needs ' + mm[2] + ' more.', 'Look at the <code>def</code> line: every parameter without a default needs a value when you call it.');
+    if ((mm = /(\w+)\(\) takes .* but (\d+) w/.exec(m))) return E('You gave <code>' + mm[1] + '()</code> <b>too many</b> values (' + mm[2] + ').', 'Count the parameters in the <code>def</code> line and give exactly that many.');
+    if (/does not support item assignment/.test(m)) return E('A string <b>cannot be changed</b> letter by letter.', 'Build a new string: <code>word = "b" + word[1:]</code>');
+    if (/indices must be integers/.test(m)) return E('The number inside <code>[ ]</code> must be a <b>whole number (int)</b>.', 'Convert with <code>int()</code>, or check that you are not using text.');
+    if (/is not subscriptable/.test(m)) return E('You used <code>[ ]</code> on something that has no positions (like a number).', 'Only strings, lists and ranges can be indexed.');
+    if (/is not iterable/.test(m)) return E('A <code>for</code> loop (or <code>in</code>) needs something to go through: a list, a string, or <code>range(...)</code>.', 'To repeat N times use <code>for i in range(N):</code>.');
+    if (/is not callable/.test(m)) return E('You put <code>( )</code> after something that is not a function (maybe a variable with the same name as a function).', 'Check the name. Do not name a variable <code>list</code>, <code>sum</code>, <code>max</code>...');
+    if (/has no len/.test(m)) return E('<code>len()</code> counts letters or items. A number has neither.', 'Use <code>len(str(number))</code> to count digits.');
+    if (/can only concatenate list/.test(m)) return E('You used + to join a list with something that is not a list.', 'To add one item use <code>my_list.append(item)</code>, or wrap it: <code>my_list + [item]</code>.');
+    if (/not supported between instances/.test(m)) return E('You compared two things of different kinds, like text and a number.', 'Convert first: <code>int(input())</code>. (Comparing numbers as text gives surprises: "10" &lt; "9" is True.)');
+  }
+  if (t === 'ValueError') {
+    if (/list\.remove|is not in list|substring not found/.test(m)) return E('You asked to find or remove something that is <b>not there</b>.', 'Check first with <code>if item in my_list:</code>.');
+    if (/iterable argument is empty/.test(m)) return E('<code>min()</code> / <code>max()</code> need at least one value, but the list is empty.', 'Check <code>len(list) > 0</code> first.');
+  }
+  if (t === 'IndentationError') {
+    if (/expected an indented block/.test(m)) return E('After a line that ends with a <b>colon :</b> the next line must be <b>indented</b> (4 spaces) - that is how Python knows what belongs inside.', 'Press Tab (or 4 spaces) at the start of the lines that belong inside the <code>if</code> / <code>for</code> / <code>while</code> / <code>def</code>.');
+    if (/unindent does not match/.test(m)) return E('The lines in one block must start in exactly the <b>same column</b>.', 'Use the same number of spaces for every line inside the block.');
+  }
+  if (t === 'SyntaxError') {
+    if (/expected ':'/.test(m)) return E('Lines that start with <code>if</code>, <code>elif</code>, <code>else</code>, <code>for</code>, <code>while</code> or <code>def</code> must end with a <b>colon :</b>', 'Add <code>:</code> at the end of that line.');
+    if (/Maybe you meant '==' or ':='/.test(m)) return E('In an <code>if</code> or <code>while</code> you <b>compare</b> with <code>==</code> (two equal signs). One <code>=</code> means store.', 'Change <code>=</code> to <code>==</code>.');
+    if (/outside (function|loop)|not properly in loop/.test(m)) return E('<code>return</code> only works inside a function, and <code>break</code> / <code>continue</code> only inside a loop.', 'Check the indentation, or remove it.');
+  }
   if (t === 'NotInCourse') return E(m + '.', 'You do not need it for this test. Take it out and use only print, input, int, float and variables.');
   if (t === 'TypeError') {
     if ((mm = /can only concatenate str \(not "(\w+)"\) to str/.exec(m)))
@@ -181,6 +228,7 @@ function explainError(err, vars, code) {
   }
   if (t === 'ZeroDivisionError') return E('You divided by <b>zero</b>, which is impossible.', 'Check the number you divide by.');
   if (t === 'EOFError') return E('<code>input()</code> wanted an answer but there was nothing left to read.', 'Your program asked for more input than was typed.');
+  if (t === 'MemoryError' && /too much text/.test(m)) return E('Your program printed a <b>huge</b> amount of text, so the website stopped it to stay fast.', 'Check the number you multiply text by, and make sure nothing repeats forever.');
   if (t === 'MemoryError' || t === 'OverflowError') return E(esc(m), 'Try a smaller number.');
   return E(esc(m), 'Read the error name and the line number.');
 }
@@ -202,13 +250,13 @@ function tracebackText(err, code) {
 /* ---------- run a program silently with prepared input -> transcript ---------- */
 async function silentRun(code, stdin) {
   const q = (stdin || []).slice(); let out = '';
-  const res = await PF.run(code, { write: s => { out += s; }, input: async () => q.length ? q.shift() : null });
+  const res = await PF.run(code, { limit: 400000, write: s => { out += s; }, input: async () => q.length ? q.shift() : null });
   return { out, res };
 }
 async function transcript(code, stdin) {            // like the real terminal: prompts + typed answers shown
   const q = (stdin || []).slice(); const parts = [];
   const res = await PF.run(code, {
-    write: s => parts.push({ t: 'out', s }),
+    limit: 400000, write: s => parts.push({ t: 'out', s }),
     input: async p => { if (p) parts.push({ t: 'out', s: p }); if (!q.length) return null; const v = q.shift(); parts.push({ t: 'in', s: v + '\n' }); return v; },
   });
   return { parts, res };
@@ -240,7 +288,25 @@ function ring(value, size = 120, label) {
     <div class="ring-n"><b>${pct(v)}%</b><span>${esc(label || '')}</span></div>`;
   return wrap;
 }
-function bar(value, cls = '') {
+function bar(value, cls = '', label = 'Progress') {
   const v = Math.max(0, Math.min(1, value));
-  return h('div', { class: 'bar ' + cls, role: 'progressbar', 'aria-valuenow': pct(v), 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('i', { style: `width:${pct(v)}%` }));
+  return h('div', { class: 'bar ' + cls, role: 'progressbar', 'aria-label': label, 'aria-valuenow': pct(v), 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('i', { style: `width:${pct(v)}%` }));
 }
+
+/* ---------- why does my output differ from the expected output? ---------- */
+function diagnose(got, expect) {
+  if (got === expect) return null;
+  const sq = s => s.replace(/\s+/g, '');
+  if (sq(got) === sq(expect)) return 'Right characters, wrong <b>spaces or line breaks</b>. A comma adds one space; + adds none; each print() is a new line.';
+  if (got.toLowerCase() === expect.toLowerCase()) return 'Check the <b>capital letters</b>. They must match exactly.';
+  if (got.replace(/\.0\b/g, '') === expect.replace(/\.0\b/g, '')) return 'So close! One side has <b>.0</b> and the other does not. That is <b>int vs float</b>: /, float() and any decimal give a float; int() gives a whole number.';
+  if (got.length > expect.length && got.endsWith('\n' + expect)) return 'Your answer is in there, but your program printed <b>extra text before it</b>. Put questions inside <code>input("...")</code> instead of print(). Only print what the task asks for.';
+  if (got.length > expect.length && got.startsWith(expect + '\n')) return 'Your program printed <b>extra text after</b> the answer. Only print what the task asks for.';
+  if (got === '') return 'Your program printed nothing. Did you forget <code>print()</code>?';
+  return null;
+}
+function applyTheme() {
+  const t = Store.data.theme; const el = document.documentElement;
+  if (t === 'light' || t === 'dark') el.dataset.theme = t; else delete el.dataset.theme;
+}
+applyTheme();

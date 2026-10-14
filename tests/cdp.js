@@ -1,9 +1,11 @@
 // minimal Chrome DevTools driver (no Playwright): launch, open, eval, screenshot, console capture
 const { spawn } = require('child_process'); const fs = require('fs'); const os = require('os'); const path = require('path');
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-async function launch(port = 9333) {
+async function launch(port = 9400 + Math.floor(Math.random() * 500)) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pyprep-chrome-'));
   const proc = spawn(CHROME, ['--headless=new', '--disable-gpu', '--allow-file-access-from-files', '--no-first-run', '--no-default-browser-check', `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`, '--window-size=1200,900', 'about:blank'], { stdio: 'ignore' });
+  const cleanup = () => { try { proc.kill(); } catch (e) {} };
+  process.on('exit', cleanup); process.on('SIGINT', () => { cleanup(); process.exit(1); }); process.on('SIGTERM', () => { cleanup(); process.exit(1); });
   for (let i = 0; i < 60; i++) { try { const r = await fetch(`http://127.0.0.1:${port}/json/version`); if (r.ok) break; } catch (e) {} await new Promise(r => setTimeout(r, 250)); }
   async function newPage(url) {
     const t = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' })).json();

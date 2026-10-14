@@ -9,8 +9,22 @@ SKILLS = {
     'types':   'Types: int / float / str',
     'errors':  'Reading errors',
     'programs':'Whole programs',
-    'bonus':   'Bonus: str() & f-strings',
+    'bonus':   'Text tools: str() & f-strings',
+    # ---- Level Up track ----
+    'bool':    'Booleans & comparisons',
+    'cond':    'if / elif / else',
+    'loops':   'Loops: while & for',
+    'strings': 'String tools',
+    'lists':   'Lists',
+    'funcs':   'Functions',
+    'project': 'Mini projects',
 }
+TEST_SKILLS = ['print', 'join', 'math', 'input', 'convert', 'types', 'errors', 'programs']
+LEVEL_SKILLS = ['bonus', 'bool', 'cond', 'loops', 'strings', 'lists', 'funcs', 'project']
+# unit -> (track, short title). Units 1-6 = the test; 7+ = Level Up
+UNITS = {1: ('test', 'print()'), 2: ('test', 'Variables & math'), 3: ('test', 'input()'), 4: ('test', 'int() & float()'), 5: ('test', 'Types & errors'),
+         6: ('test', 'Whole programs'), 7: ('level', 'str() & f-strings'), 8: ('level', 'Decisions: if / else'), 9: ('level', 'Loops'),
+         10: ('level', 'Strings'), 11: ('level', 'Lists'), 12: ('level', 'Functions'), 13: ('level', 'Mini projects')}
 def _add(kind, unit, **kw):
     d = dict(kind=kind, unit=unit); d.update(kw); ITEMS.append(d); return d
 
@@ -22,9 +36,9 @@ def typed(unit, code, why, stdin=(), skill='print', level=2):
     """Type the exact output."""
     return _add('typed', unit, code=code.strip('\n'), why=why, stdin=list(stdin), skill=skill, level=level)
 
-def ty(unit, expr, why, setup='', stdin=(), skill='types', level=1):
-    """What type does expr produce?  int / float / str / Error"""
-    return _add('ty', unit, expr=expr, setup=setup.strip('\n'), why=why, stdin=list(stdin), skill=skill, level=level)
+def ty(unit, expr, why, setup='', stdin=(), skill='types', level=1, choices=None):
+    """What type does expr produce?  default choices int / float / str / Error; pass choices=['bool','int','str','list'] etc."""
+    return _add('ty', unit, expr=expr, setup=setup.strip('\n'), why=why, stdin=list(stdin), skill=skill, level=level, choices=list(choices) if choices else None)
 
 def line(unit, code, why, stdin=(), skill='errors', level=2):
     """Which line crashes?"""
